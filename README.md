@@ -1,0 +1,82 @@
+# APAC Growth Dashboard — demo
+
+A single-page dashboard for tracking market health across an acquisition funnel:
+registration → submit → L3 → first trade, alongside CPA, revenue, CAC payback and LTV.
+
+**Live: https://joshcheeworldfirst.github.io/apac-growth-dashboard/**
+
+> ### Every number in this repository is invented
+> This is a demonstration of the tool, not a report. The figures are produced by a
+> deterministic generator purely so the layout has something to render. They are not
+> anyone's real revenue, spend or conversion rates, and nothing here should be read as
+> a statement about any business.
+
+## What it does
+
+- **Map** — every market shaded by a health band, with a framed reference-market inset.
+  Click a market to focus it across the whole page; Escape clears.
+- **Funnel** — the four stages per market, with each step's conversion rate and how it
+  compares to the reference market.
+- **Unit economics** — CAC payback against net LTV:CAC, bubble area by revenue.
+- **Trends** — per-market sparklines for any metric, month by month.
+- **Table** — every figure, sortable, downloadable as CSV.
+- **Paste panel** — load your own numbers straight from a spreadsheet. Tab- or
+  comma-separated, tolerant of `$`, `,`, `%` and of month formats like `Aug-26`,
+  `August 2026` or `2026-08`. Only the columns present in the paste are updated, so a
+  spend-only block tops up CPA without disturbing the funnel.
+
+Pasted data stays in your browser. Nothing is uploaded anywhere.
+
+## The formulas
+
+```
+REG→Submit  = Submit / REG              Submit→L3 = L3 / Submit
+L3→NFC      = NFC / L3                  REG→NFC   = NFC / REG
+
+CPA              = Marketing spend / NFC
+Revenue per NFC  = New-cohort revenue / NFC
+Payback (months) = CPA / (Avg revenue per customer × Gross margin %)
+Net LTV          = (18 × Avg revenue per customer) − CPA
+```
+
+**Net LTV subtracts CPA**, so the sensible target is 2.0× — the same bar as a
+conventional 3.0× gross LTV:CAC.
+
+**Average revenue per customer** resolves in order: a measured active-customer count,
+then a per-market estimate, then total NFC for the period, then month-one new-cohort
+revenue. Which one is in play moves payback and LTV substantially, so the page names the
+basis it used in its banner and on its methodology card. Read that before quoting a
+number.
+
+**Health score** is a weighted 0–100 blend of funnel conversion, CPA, LTV:CAC, payback
+and revenue momentum. Components with no data are dropped and the remaining weights
+renormalised, so a market is never marked down for a gap in reporting.
+
+## Running it
+
+No build step, no dependencies, no network calls — plain HTML, CSS and JavaScript with
+the map geometry pre-projected into SVG paths.
+
+```bash
+python3 -m http.server 8000
+```
+
+Or open `index.html` straight off disk.
+
+## Layout
+
+```
+index.html            the page
+assets/styles.css     tokens and layout, light and dark
+assets/metrics.js     every formula, computed in the browser
+assets/app.js         rendering and interaction
+assets/map-paths.js   pre-projected country outlines
+data/data.js          the demo dataset the page loads
+data/demo.js          the same data as pasteable TSV
+```
+
+## Credits
+
+Map geometry from [Natural Earth](https://www.naturalearthdata.com/) (public domain) via
+the npm `world-atlas` package. Colour palette validated for contrast and colour-vision
+deficiency in both light and dark modes.

@@ -1,0 +1,71 @@
+name: Deploy dashboard to Pages
+
+# Publishes this site to GitHub Pages on every push to main.
+#
+# This repository is public and carries only invented demo data, so a public
+# Pages site is the intended outcome. `configure-pages` with `enablement: true`
+# turns Pages on via the API using this workflow's own GITHUB_TOKEN, so the
+# site is stood up from code rather than from the settings screen.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write        # what lets this workflow enable and deploy Pages
+  id-token: write     # required by deploy-pages for its OIDC exchange
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the site is complete before publishing it
+        run: |
+          test -f index.html
+          test -f data/data.js
+          test -f assets/map-paths.js
+          echo "site looks complete ($(du -sh . | cut -f1))"
+
+      - id: configure
+        uses: actions/configure-pages@v5
+        continue-on-error: true
+        with:
+          enablement: true
+
+      - name: Explain why the deploy was skipped
+        if: steps.configure.outcome == 'failure'
+        run: |
+          {
+            echo "## Pages deploy skipped"
+            echo
+            echo "\`actions/configure-pages\` could not enable Pages. Check that"
+            echo "Settings -> Actions -> General -> Workflow permissions is set to"
+            echo "*Read and write*, or enable Pages by hand at Settings -> Pages"
+            echo "with source *GitHub Actions*."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.configure.outcome == 'success'
+        with:
+          path: .
+
+      - id: deployment
+        if: steps.configure.outcome == 'success'
+        uses: actions/deploy-pages@v4
+
+      - name: Where it landed
+        if: steps.configure.outcome == 'success'
+        run: |
+          echo "## Dashboard published" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
