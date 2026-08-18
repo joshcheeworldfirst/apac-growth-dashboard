@@ -63,6 +63,16 @@ python3 -m http.server 8000
 
 Or open `index.html` straight off disk.
 
+## Publishing
+
+Settings → Pages → Source: **Deploy from a branch**, branch `main`, folder **`/ (root)`**.
+That is the whole setup; every push to `main` republishes.
+
+There is no deploy workflow on purpose. `actions/configure-pages` cannot switch Pages on
+for this repository — the workflow token is refused by the create-Pages-site API — and
+because that step ran under `continue-on-error`, the run reported success while silently
+skipping its own deploy. Serving from the branch removes the step that could lie.
+
 ## Layout
 
 ```
