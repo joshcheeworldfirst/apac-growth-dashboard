@@ -354,10 +354,10 @@
       if (excluded.length) {
         bits.push("<strong>CPA excludes " +
           excluded.sort().map(monthLabel).join(", ") +
-          "</strong> — no marketing spend booked for " +
-          (excluded.length === 1 ? "that month" : "those months") +
-          ", so counting its clients would divide real spend by clients that " +
-          "cost nothing on paper and read CPA low.");
+          "</strong> — spend for " +
+          (excluded.length === 1 ? "that month is" : "those months is") +
+          " unbooked or incomplete, so both its spend and its clients are left " +
+          "out rather than divided against each other.");
       }
 
       var noRev = withData.filter(function (s) { return s.metrics.rev_total === null; });
@@ -783,7 +783,7 @@
       html.push('<div class="ffoot"><span>CPA</span><b>' +
         fmtMoney(m.cpa, { exact: true }) + "</b>" +
         '<span class="ffoot-sub">' +
-        (m.cpa === null ? "needs marketing_spend"
+        (m.cpa === null ? "no complete month of spend"
           : "spend \u00f7 " + fmtInt(m.nfc_for_cpa) + " NFC") +
         "</span></div>");
       html.push("</div>");

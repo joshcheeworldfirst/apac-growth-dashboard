@@ -86,13 +86,18 @@
     m.cvr_l3_nfc = ratio(m.nfc, m.l3);
     m.cvr_reg_nfc = ratio(m.nfc, m.reg);
 
-    /* CPA divides spend by the NFC of the months that HAVE spend, not by every
-     * month's NFC - see sumRows(). On a single raw row the two are the same,
-     * and a row with no spend yields no CPA either way. */
-    m.nfc_for_cpa = row.nfc_for_cpa === undefined || row.nfc_for_cpa === null
-      ? m.nfc : row.nfc_for_cpa;
+    /* CPA is measured over qualifying months only - see sumRows(). sumRows
+     * always sets both keys, so their presence is what distinguishes a rolled
+     * up period from a single raw row; either may legitimately be null when
+     * every month was excluded. A single partial row yields no CPA at all,
+     * because its spend is incomplete. */
+    var hasCpaBasis = row.spend_for_cpa !== undefined;
+    m.spend_for_cpa = hasCpaBasis ? row.spend_for_cpa
+      : (m.is_partial ? null : m.spend);
+    m.nfc_for_cpa = hasCpaBasis ? row.nfc_for_cpa
+      : (m.is_partial ? null : m.nfc);
     m.cpa_excluded_months = row.cpa_excluded_months || null;
-    m.cpa = ratio(m.spend, m.nfc_for_cpa);
+    m.cpa = ratio(m.spend_for_cpa, m.nfc_for_cpa);
     // Revenue to date per client acquired. Both sides cover the clients
     // acquired in the period, so over a year-to-date window this is what one
     // 2026 client has actually been worth so far - no assumptions in it.
@@ -108,11 +113,19 @@
    * market's year to date, and the tier benchmarks - so the CPA rule below
    * cannot apply in one place and not another.
    *
-   * CPA gets its own denominator. Summing spend and NFC independently would
-   * divide the months that HAVE spend by the NFC of ALL months: August has no
-   * spend booked anywhere but did acquire clients, so its clients would arrive
-   * in the denominator with no cost attached and drag CPA down - roughly 10%
-   * across APAC. `nfc_for_cpa` counts only the months that carry spend, and
+   * CPA gets its own numerator AND denominator, over the same months. A month
+   * qualifies only if it has a spend figure and is not a partial period:
+   *
+   *   no spend booked   its clients would arrive in the denominator with no
+   *                     cost attached and drag CPA down - about 10% across
+   *                     APAC when August was included.
+   *   partial period    August is reported 1-14. Its spend is incomplete, and
+   *                     nothing says the spend and the clients were cut at the
+   *                     same point in the month, so the ratio is unsafe in
+   *                     either direction.
+   *
+   * Both sides are summed over the qualifying months only - taking a month's
+   * spend while dropping its clients would overstate CPA just as surely.
    * `cpa_excluded_months` records what was left out so the page can say so.
    */
   function sumRows(rows, month, label) {
@@ -124,16 +137,20 @@
       totals[c] = vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) : null;
     });
 
+    var spendForCpa = null;
     var nfcForCpa = null;
     var excluded = [];
     rows.forEach(function (r) {
       var spend = r.marketing_spend;
-      if (spend !== null && spend !== undefined) {
+      var funded = spend !== null && spend !== undefined;
+      if (funded && !r.is_partial) {
+        spendForCpa = (spendForCpa || 0) + spend;
         if (r.nfc !== null && r.nfc !== undefined) nfcForCpa = (nfcForCpa || 0) + r.nfc;
-      } else if (r.nfc) {
+      } else if (r.nfc || funded) {
         if (r.month && excluded.indexOf(r.month) < 0) excluded.push(r.month);
       }
     });
+    totals.spend_for_cpa = spendForCpa;
     totals.nfc_for_cpa = nfcForCpa;
     totals.cpa_excluded_months = excluded.sort();
     return totals;
