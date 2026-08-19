@@ -493,6 +493,14 @@ footer.foot { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--b
   letter-spacing: 0.02em;
 }
 
+/* The benchmark line: named once per card, directly under the market name, so
+   every step row below it can carry the bare gap without repeating it. */
+.funnel-card .fbench {
+  margin: -6px 0 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The market that sets its tier's benchmark, rather than one measured against it. */
 .vs.best {
   color: var(--text-muted);

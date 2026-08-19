@@ -42,9 +42,11 @@ Every figure is one division of two reported numbers. There is no margin, retent
 rate, customer-base estimate or horizon behind any of them.
 
 **Benchmarking is tier-local.** The reference market is the yardstick for *mature*
-markets only — measuring a young market against a mature one reports its age, not its
-health. Growth and emerging markets are scored against the best actual in their own tier.
-An explicit per-market target overrides both.
+markets only, like for like — measuring a young market against a mature one reports its
+age, not its health. Growth and emerging markets are scored against the **best achievement
+YTD** in their own tier, a target rather than a like-for-like read, held year-to-date so
+the bar does not move every time you change the month. An explicit per-market target
+overrides both.
 
 **Health score** is a weighted 0–100 blend: REG→NFC conversion 35%, CPA 30%, NFC growth
 20%, revenue growth 15%. Components with no data are dropped and the remaining weights

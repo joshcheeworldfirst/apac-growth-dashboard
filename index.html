@@ -127,6 +127,10 @@ REG→NFC    = NFC / REG</div>
           <h3>CPA</h3>
           <p>Fully-loaded acquisition cost per new first-trade customer. Marketing spend is an input you supply per market per month.</p>
           <div class="formula">CPA = Marketing spend / NFC</div>
+          <p style="margin-top:8px">JP, KR and TW share one CPA. Spend is reported for
+          JKT as a region rather than per country, so the region total is split by NFC
+          share — which returns the region's own CPA to each of the three exactly. Their
+          funnels are measured separately.</p>
         </div>
 
         <div class="method">
@@ -150,13 +154,19 @@ Rev per NFC    = New-cohort rev / NFC</div>
 
         <div class="method">
           <h3>What is benchmarked against what</h3>
-          <p>The UK is the mature-market yardstick and nothing else. Measuring an emerging
-          market against a mature one reports its age, not its health. Growth and emerging
-          markets are scored against the best actual in their own tier.</p>
-          <div class="formula">Mature (SG, ANZ)      → UK
-Growth (MY, VN)       → best in tier
-Emerging (TH, PH, ID,
-  Longtail, JKT)      → best in tier
+          <p>The UK is the mature-market yardstick and nothing else — measuring an
+          emerging market against a mature one reports its age, not its health. Growth and
+          emerging markets are scored against the best achievement so far this year within
+          their own tier. That bar is cumulative on purpose — year-to-date through the
+          month on screen, not that month alone, so it does not swing on one month's
+          noise.</p>
+          <div class="formula">Mature (SG, ANZ)
+  → the UK, same period
+Growth (MY, VN)
+  → best achievement YTD in tier
+Emerging (TH, PH, ID, Longtail,
+  JP, KR, TW)
+  → best achievement YTD in tier
 
 A target_cpa or target_reg_to_nfc_pct
 set in assumptions.csv beats both.</div>

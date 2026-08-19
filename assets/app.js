@@ -135,6 +135,24 @@
     return M.deriveRow(raw, mk);
   }
 
+  /** Year-to-date metrics through the selected month, whatever the period
+   * toggle says. The tier benchmark is a "best achieved so far this year" bar,
+   * so it must not move about when the reader switches between month and YTD. */
+  function ytdMetrics(market) {
+    var year = state.month.slice(0, 4);
+    var rows = rawSeries(market, state.month).filter(function (r) {
+      return r.month.slice(0, 4) === year && hasData(r);
+    });
+    if (!rows.length) return null;
+    var totals = { month: state.month, market: market };
+    M.NUMERIC_COLS.forEach(function (c) {
+      var vals = rows.map(function (r) { return r[c]; })
+        .filter(function (v) { return v !== null && v !== undefined; });
+      totals[c] = vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) : null;
+    });
+    return M.deriveRow(totals, marketsById[market]);
+  }
+
   /** Previous *month* metrics - momentum is always month-on-month, even in YTD view. */
   function previousMonthMetrics(market) {
     var idx = months.indexOf(state.month);
@@ -167,19 +185,26 @@
    * assumptions.csv when set, otherwise the reference market's own actual.
    */
   var BENCH_KEYS = ["cvr_reg_nfc", "cvr_reg_submit", "cvr_submit_l3", "cvr_l3_nfc", "cpa"];
+  var BEST_YTD_LABEL = "best achievement YTD";
 
-  /* Benchmarking is tier-local.
+  /* Benchmarking is tier-local, and the two tiers work differently on purpose.
    *
-   * UK is the yardstick for mature markets and nothing else. Holding a young
-   * emerging market against a mature one measures its age, not its health -
-   * it will read "at risk" for as long as it is new, which tells the reader
-   * nothing they did not already know. Growth and emerging markets are scored
-   * against the best actual in their own tier instead: the same "how much of
-   * the achievable am I hitting" question, asked of the right peer group.
+   * Mature markets are compared against the UK like for like - same period,
+   * a peer reference. UK is the yardstick for mature markets and nothing else:
+   * holding a young market against a mature one measures its age, not its
+   * health, and buries the differences between young markets that are the only
+   * actionable signal at that stage.
+   *
+   * Growth and emerging markets are scored against the best achievement so far
+   * this year within their own tier. That is a target rather than a like-for-
+   * like read, so it is deliberately year-to-date: a bar recomputed from a
+   * single month would move every time the reader changed the month, and a
+   * market could "improve" without doing anything.
    *
    * An explicit target in assumptions.csv beats both, for any market. */
   function tierBenchmarks(byMarket) {
     var out = {};
+    var ytd = {};
     Object.keys(TIERS).forEach(function (tier) {
       if (tier === "mature") {
         var ref = byMarket[REFERENCE_MARKET];
@@ -187,12 +212,14 @@
         BENCH_KEYS.forEach(function (k) { out[tier][k] = ref ? ref[k] : null; });
         return;
       }
-      var peers = data.markets.filter(function (mk) {
-        return mk.tier === tier && byMarket[mk.market];
+      var peers = data.markets.filter(function (mk) { return mk.tier === tier; });
+      peers.forEach(function (mk) {
+        if (ytd[mk.market] === undefined) ytd[mk.market] = ytdMetrics(mk.market);
       });
-      out[tier] = { label: "best in tier", self: null };
+      var withData = peers.filter(function (mk) { return ytd[mk.market]; });
+      out[tier] = { label: BEST_YTD_LABEL, self: null };
       BENCH_KEYS.forEach(function (k) {
-        out[tier][k] = bestOf(peers, byMarket, k, k !== "cpa");
+        out[tier][k] = bestOf(withData, ytd, k, k !== "cpa");
       });
     });
     return out;
@@ -298,14 +325,25 @@
         bits.push("<strong>" + esc(label) + " is a partial period</strong> — " +
           "month-on-month momentum is skipped rather than compared against a full month.");
       }
-      var allocated = withData.filter(function (s) {
-        return s.metrics.spend_basis && s.metrics.spend_basis.indexOf("allocated") === 0;
+      // Spend that is not measured per market gets named, with the reason.
+      // Splitting a region's spend by NFC share gives every member the region's
+      // own CPA exactly, so the figure is real - it just is not the country's.
+      var SPEND_NOTE = {
+        "allocated_from_SEA-5_by_nfc": "Spend for {} is <strong>allocated from the SEA-5 " +
+          "total by NFC share</strong>, not measured per country — treat their CPA as " +
+          "indicative.",
+        "grouped_at_JKT": "{} <strong>share one CPA</strong> — spend is reported for JKT " +
+          "as a region, not per country, so all three carry the region figure. Their " +
+          "funnels are their own.",
+      };
+      var byBasis = {};
+      withData.forEach(function (s) {
+        var b = s.metrics.spend_basis;
+        if (SPEND_NOTE[b]) (byBasis[b] = byBasis[b] || []).push(s.market);
       });
-      if (allocated.length) {
-        bits.push("Spend for " + allocated.map(function (s) { return s.market; }).join(", ") +
-          " is <strong>allocated from the SEA-5 total by NFC share</strong>, not measured " +
-          "per country — treat their CPA as indicative.");
-      }
+      Object.keys(byBasis).forEach(function (b) {
+        bits.push(SPEND_NOTE[b].replace("{}", byBasis[b].join(", ")));
+      });
     }
     var band = !withData.length ? "nodata" : (noSpend.length || missing.length ? "watch" : "healthy");
     el.banner.innerHTML =
@@ -624,21 +662,32 @@
 
   /* --------------------------------------------------------------- funnel */
 
-  /* Render "x% vs <benchmark>" for one rate, or name the market as its tier's
-   * best where it IS the benchmark - "+0% vs best in tier" is noise, and worse,
-   * reads as a market scraping level with a peer rather than setting the bar. */
-  function vsBench(val, refVal, label) {
+  /* One rate against its benchmark.
+   *
+   * `withLabel` names the benchmark; without it only the signed gap is drawn.
+   * The benchmark is the same for every step of a card, so it is spelled out
+   * once in the card header and the step rows carry the bare gap - repeating
+   * "vs best achievement YTD" four times per card overflows the column and
+   * reads as noise.
+   *
+   * A market that IS the benchmark is named as such rather than shown as
+   * "+0%", which would read as scraping level with a peer rather than setting
+   * the bar. */
+  function vsBench(val, refVal, label, withLabel) {
     if (val === null || val === undefined || !refVal || !label) return "";
-    if (val === refVal) return ' <span class="vs best">best in tier</span>';
+    if (val === refVal) {
+      return ' <span class="vs best">' + (withLabel ? esc(label) : "sets the bar") + "</span>";
+    }
     var d = val / refVal - 1;
     var cls = Math.abs(d) < 0.02 ? "" : (d > 0 ? "above" : "below");
     return ' <span class="vs ' + cls + '">' + (d >= 0 ? "+" : "") +
-      (d * 100).toFixed(0) + "% vs " + esc(label) + "</span>";
+      (d * 100).toFixed(0) + "%" + (withLabel ? " vs " + esc(label) : "") + "</span>";
   }
 
   function renderFunnel(snap) {
     el.funnelBenchName.textContent =
-      "UK for mature markets, and the best actual in their own tier for growth and emerging";
+      "the UK for mature markets, and the best achievement YTD in their own tier " +
+      "for growth and emerging";
 
     var shown = snap.filter(function (s) {
       return s.metrics && (!state.selected || s.market === state.selected);
@@ -660,9 +709,12 @@
       var html = ['<div class="funnel-card">'];
       html.push('<div class="fh"><span class="mk">' + esc(s.market) + "</span>" +
         '<span class="tier">' + esc(s.meta.name) + "</span>" +
-        '<span class="e2e">REG→NFC <b>' + fmtPct(m.cvr_reg_nfc, 2) + "</b>" +
-        vsBench(m.cvr_reg_nfc, s.benchmarks && s.benchmarks.cvr_reg_nfc,
-                s.benchmarks && s.benchmarks.label) + "</span></div>");
+        '<span class="e2e">REG→NFC <b>' + fmtPct(m.cvr_reg_nfc, 2) + "</b></span></div>");
+      // The benchmark, named once. Every step below is measured against it.
+      var bench = vsBench(m.cvr_reg_nfc, s.benchmarks && s.benchmarks.cvr_reg_nfc,
+                          s.benchmarks && s.benchmarks.label, true);
+      html.push('<div class="fbench">' +
+        (bench || '<span class="vs">reference market</span>') + "</div>");
 
       M.STAGES.forEach(function (stage, i) {
         var v = m[stage];
@@ -679,7 +731,7 @@
           // Each market is measured against its own tier's reference, so an
           // emerging market is never held to a mature market's funnel.
           var refVal = s.benchmarks ? s.benchmarks[st[2]] : null;
-          var cmp = vsBench(val, refVal, s.benchmarks && s.benchmarks.label);
+          var cmp = vsBench(val, refVal, s.benchmarks && s.benchmarks.label, false);
           html.push('<div class="step-cvr"><span></span><span class="arrow">↳ <b>' +
             fmtPct(val, 1) + "</b>" + cmp + "</span><span></span></div>");
         }
