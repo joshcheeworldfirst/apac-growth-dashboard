@@ -79,6 +79,16 @@
     return v.toFixed(dp === undefined ? 1 : dp);
   }
 
+  /* Which period the figures on screen cover. The map tooltip and the KPI
+   * cards both show sums whose meaning changes entirely with the Period
+   * selector - "$37K" reads as one month unless something says otherwise -
+   * so every aggregate figure carries this. */
+  function periodNote() {
+    if (state.period !== "ytd") return monthLabel(state.month);
+    var year = (state.month || "").slice(0, 4);
+    return "Jan\u2013" + monthLabel(state.month).split(" ")[0] + " " + year;
+  }
+
   function monthLabel(m) {
     if (!m) return "";
     var parts = m.split("-");
@@ -345,16 +355,10 @@
         bits.push(SPEND_NOTE[b].replace("{}", byBasis[b].join(", ")));
       });
 
-      // Revenue is marketing-channel only, and the cohort workbook covers the
-      // eleven APAC markets but not the UK. Say so rather than letting a blank
-      // read as "marketing earned nothing here".
-      var noRev = withData.filter(function (s) { return s.metrics.rev_month === null; });
+      var noRev = withData.filter(function (s) { return s.metrics.rev_total === null; });
       if (noRev.length) {
-        bits.push("<strong>No marketing revenue for " +
-          noRev.map(function (s) { return s.market; }).join(", ") +
-          "</strong> — the cohort workbook does not cover " +
-          (noRev.length === 1 ? "it" : "them") + ", so this is a reporting gap, " +
-          "not a zero.");
+        bits.push("<strong>No revenue reported for " +
+          noRev.map(function (s) { return s.market; }).join(", ") + "</strong>.");
       }
     }
     var band = !withData.length ? "nodata" : (noSpend.length || missing.length ? "watch" : "healthy");
@@ -411,18 +415,19 @@
     el.kpis.innerHTML = [
       kpiCard("APAC new customers (NFC)", fmtInt(cur.nfc), "",
         prevCmp ? deltaVs(cur.nfc, prevCmp.nfc) : null),
-      kpiCard("Marketing revenue", fmtMoney(cur.rev_month),
-        "booked this month, all CY26 marketing cohorts",
-        prevCmp ? deltaVs(cur.rev_month, prevCmp.rev_month) : null),
-      kpiCard("New revenue (marketing)", fmtMoney(cur.rev_total),
-        "new customers acquired via marketing, this month",
+      kpiCard("New total revenue", fmtMoney(cur.rev_total), periodNote(),
         prevCmp ? deltaVs(cur.rev_total, prevCmp.rev_total) : null),
+      kpiCard("New transaction revenue", fmtMoney(cur.rev_txn),
+        cur.txn_share === null ? periodNote()
+          : fmtPct(cur.txn_share, 0) + " of new total revenue",
+        prevCmp ? deltaVs(cur.rev_txn, prevCmp.rev_txn) : null),
       kpiCard("REG → NFC conversion", fmtPct(cur.cvr_reg_nfc, 2),
         refCvr !== null ? "UK, mature reference " + fmtPct(refCvr, 2) : "no UK reference yet"),
       kpiCard("Blended CPA", fmtMoney(cur.cpa, { exact: cur.cpa !== null && cur.cpa < 10000 }),
         cur.cpa === null ? "needs marketing_spend" : "",
         cur.cpa !== null && prevCmp ? deltaVs(cur.cpa, prevCmp.cpa, { lowerIsBetter: true }) : null),
-      kpiCard("Revenue per NFC", fmtMoney(cur.arpa, { exact: true }), "month-1 revenue per new customer"),
+      kpiCard("Revenue per NFC", fmtMoney(cur.arpa, { exact: true }),
+        "new total revenue \u00f7 NFC"),
     ].join("");
   }
 
@@ -588,10 +593,11 @@
     if (m) {
       rows.push(tipRow("REG → NFC", fmtPct(m.cvr_reg_nfc, 2)));
       rows.push(tipRow("NFC", fmtInt(m.nfc)));
-      rows.push(tipRow("New revenue (marketing)", fmtMoney(m.rev_total)));
+      rows.push(tipRow("New total revenue", fmtMoney(m.rev_total)));
+      rows.push(tipRow("New transaction revenue", fmtMoney(m.rev_txn)));
       rows.push(tipRow("Revenue per NFC", fmtMoney(m.arpa, { exact: true })));
       rows.push(tipRow("CPA", fmtMoney(m.cpa, { exact: true })));
-      rows.push(tipRow("Marketing revenue", fmtMoney(m.rev_month)));
+
     } else {
       rows.push('<div class="tt-note">No data for this period.</div>');
     }
@@ -603,7 +609,8 @@
     showTip(e,
       '<div class="tt-title"><span style="color:' + BAND_COLOR[band.key] + '">' +
       BAND_ICON[band.key] + "</span>" + esc(s.meta.name) +
-      (s.meta.in_apac ? "" : " · reference") + "</div>" +
+      (s.meta.in_apac ? "" : " · reference") +
+      '<span class="tt-period">' + esc(periodNote()) + "</span></div>" +
       tipRow("Health", (s.health && s.health.score !== null ? Math.round(s.health.score) : "—") +
         " · " + band.label) +
       rows.join("") + note);
@@ -764,7 +771,7 @@
   /* -------------------------------------------------------- small mults */
 
   var TREND_FMT = {
-    rev_month: fmtMoney, rev_total: fmtMoney, nfc: fmtInt, reg: fmtInt,
+    rev_total: fmtMoney, rev_txn: fmtMoney, nfc: fmtInt, reg: fmtInt,
     cvr_reg_nfc: function (v) { return fmtPct(v, 2); },
     cpa: function (v) { return fmtMoney(v, { exact: true }); },
     arpa: function (v) { return fmtMoney(v, { exact: true }); },
@@ -881,8 +888,8 @@
       fmt: function (x) { return fmtPct(x, 2); } },
     { key: "cpa", label: "CPA", get: function (s) { return v(s, "cpa"); },
       fmt: function (x) { return fmtMoney(x, { exact: true }); } },
-    { key: "rev_month", label: "Mkt revenue", get: function (s) { return v(s, "rev_month"); }, fmt: fmtMoney },
-    { key: "rev_total", label: "New cohort rev", get: function (s) { return v(s, "rev_total"); }, fmt: fmtMoney },
+    { key: "rev_total", label: "New total rev", get: function (s) { return v(s, "rev_total"); }, fmt: fmtMoney },
+    { key: "rev_txn", label: "New txn rev", get: function (s) { return v(s, "rev_txn"); }, fmt: fmtMoney },
     { key: "arpa", label: "Rev / NFC", get: function (s) { return v(s, "arpa"); },
       fmt: function (x) { return fmtMoney(x, { exact: true }); } },
     { key: "health", label: "Health", get: function (s) {
@@ -967,14 +974,7 @@
 
   function renderMethodNote() {
     if (el.revenueBasisNote) {
-      var covered = 0, total = 0;
-      snapshot().forEach(function (s) {
-        total++;
-        if (s.metrics && s.metrics.rev_month !== null) covered++;
-      });
-      el.revenueBasisNote.textContent =
-        "Marketing channel only, from the cohort workbook \u2014 " + covered +
-        " of " + total + " markets covered.";
+      el.revenueBasisNote.textContent = "Showing " + periodNote() + ".";
     }
 
     el.healthFormula.textContent = M.HEALTH_COMPONENTS.map(function (c) {

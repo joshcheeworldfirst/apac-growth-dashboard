@@ -506,3 +506,12 @@ footer.foot { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--b
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* Which period a tooltip's figures cover. Without it a cumulative Jan-Aug
+   total is indistinguishable from a single month's. */
+.tooltip .tt-title .tt-period {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-muted);
+}
