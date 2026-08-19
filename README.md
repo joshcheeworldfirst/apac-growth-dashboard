@@ -34,19 +34,19 @@ REG→Submit  = Submit / REG              Submit→L3 = L3 / Submit
 L3→NFC      = NFC / L3                  REG→NFC   = NFC / REG
 
 CPA             = Marketing spend / NFC
-Revenue per NFC = New total revenue / NFC
+Revenue per client = Total new revenue / NFC
 NFC growth      = NFC this month / NFC last month − 1
 ```
 
 Every figure is one division of two reported numbers. There is no margin, retention rate,
 customer-base estimate or horizon behind any of them.
 
-**Everything is scoped to one acquisition channel, and to new customers.** Revenue is what
-the customers acquired in the period brought in, reported as a total and its transaction-fee
-component; the remainder is FX spread and other fees, so a falling transaction share means
-the market is monetising through spread rather than volume. Revenue, NFC and CPA all describe
-the same customers, so they can be divided by one another without mixing populations. Both
-revenue lines sum over the selected period, and every aggregate on the page names its period.
+**Everything is scoped to one acquisition channel.** Revenue is *total new revenue* —
+everything the clients acquired this year have billed so far. A month's figure is what all
+those cohorts booked in that month, so the figures sum: Year to date gives the year-to-date
+total per market. It grows through the year as earlier cohorts keep trading, so most of a
+late month's value comes from clients won earlier, not that month's new ones. Revenue, NFC
+and CPA all describe the same clients, and every aggregate on the page names its period.
 
 **Benchmarking is tier-local.** The reference market is the yardstick for *mature* markets
 only, like for like — measuring a young market against a mature one reports its age, not

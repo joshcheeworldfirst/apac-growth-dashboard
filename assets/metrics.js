@@ -16,7 +16,6 @@
   var NUMERIC_COLS = STAGES.concat([
     "new_reg_nfc",
     "new_total_revenue",
-    "new_transaction_revenue",
     "marketing_spend",
   ]);
 
@@ -68,22 +67,18 @@
     m.is_partial = !!row.is_partial;
     m.period_label = row.period_label || null;
     m.spend_basis = row.spend_basis || null;
-    /* Revenue is NEW-CUSTOMER revenue: what the NFC cohort acquired in the
-     * period brought in. Not the market's whole book. Because the source
-     * sheet's NFC is the marketing-channel NFC, this is already scoped to
-     * marketing-acquired customers, which is what lets revenue, NFC and CPA
-     * be divided by one another without mixing populations.
+    /* TOTAL NEW REVENUE: everything the clients acquired during 2026 have
+     * billed. A month's figure is what all of those cohorts booked in that
+     * month, so summing across a period gives the year-to-date total - which
+     * is the figure the business actually asks for. It is not the market's
+     * whole book, and it is not one cohort's first month.
      *
-     *   rev_total  new total revenue from that cohort
-     *   rev_txn    the transaction-fee component of it, always <= rev_total
-     *
-     * Summed over a period these give the Jan..N cumulative figures. */
+     * It grows through the year as earlier cohorts keep trading, so a single
+     * month's value is a contribution to the total rather than a thing to
+     * compare against that month's acquisitions. */
     m.rev_total = row.new_total_revenue === undefined ? null : row.new_total_revenue;
-    m.rev_txn = row.new_transaction_revenue === undefined ? null : row.new_transaction_revenue;
-    m.rev_other =
-      m.rev_total !== null && m.rev_txn !== null ? m.rev_total - m.rev_txn : null;
-    m.txn_share = ratio(m.rev_txn, m.rev_total);
     m.spend = row.marketing_spend;
+
 
     // Funnel step conversion + end-to-end.
     m.cvr_reg_submit = ratio(m.submit, m.reg);
@@ -93,8 +88,10 @@
 
     // Unit economics.
     m.cpa = ratio(m.spend, m.nfc);
-    m.arpa = ratio(m.rev_total, m.nfc);       // new revenue per new customer
-    m.arpa_txn = ratio(m.rev_txn, m.nfc);     // its transaction component
+    // Revenue to date per client acquired. Both sides cover the clients
+    // acquired in the period, so over a year-to-date window this is what one
+    // 2026 client has actually been worth so far - no assumptions in it.
+    m.arpa = ratio(m.rev_total, m.nfc);
 
     return m;
   }

@@ -357,8 +357,11 @@
 
       var noRev = withData.filter(function (s) { return s.metrics.rev_total === null; });
       if (noRev.length) {
-        bits.push("<strong>No revenue reported for " +
-          noRev.map(function (s) { return s.market; }).join(", ") + "</strong>.");
+        bits.push("<strong>No revenue for " +
+          noRev.map(function (s) { return s.market; }).join(", ") +
+          "</strong> — the cohort workbook does not cover " +
+          (noRev.length === 1 ? "it" : "them") + ", so this is a reporting gap, " +
+          "not a zero.");
       }
     }
     var band = !withData.length ? "nodata" : (noSpend.length || missing.length ? "watch" : "healthy");
@@ -415,19 +418,16 @@
     el.kpis.innerHTML = [
       kpiCard("APAC new customers (NFC)", fmtInt(cur.nfc), "",
         prevCmp ? deltaVs(cur.nfc, prevCmp.nfc) : null),
-      kpiCard("New total revenue", fmtMoney(cur.rev_total), periodNote(),
+      kpiCard("Total new revenue", fmtMoney(cur.rev_total),
+        "from clients acquired in 2026 \u00b7 " + periodNote(),
         prevCmp ? deltaVs(cur.rev_total, prevCmp.rev_total) : null),
-      kpiCard("New transaction revenue", fmtMoney(cur.rev_txn),
-        cur.txn_share === null ? periodNote()
-          : fmtPct(cur.txn_share, 0) + " of new total revenue",
-        prevCmp ? deltaVs(cur.rev_txn, prevCmp.rev_txn) : null),
       kpiCard("REG → NFC conversion", fmtPct(cur.cvr_reg_nfc, 2),
         refCvr !== null ? "UK, mature reference " + fmtPct(refCvr, 2) : "no UK reference yet"),
       kpiCard("Blended CPA", fmtMoney(cur.cpa, { exact: cur.cpa !== null && cur.cpa < 10000 }),
         cur.cpa === null ? "needs marketing_spend" : "",
         cur.cpa !== null && prevCmp ? deltaVs(cur.cpa, prevCmp.cpa, { lowerIsBetter: true }) : null),
-      kpiCard("Revenue per NFC", fmtMoney(cur.arpa, { exact: true }),
-        "new total revenue \u00f7 NFC"),
+      kpiCard("Revenue per client", fmtMoney(cur.arpa, { exact: true }),
+        "total new revenue \u00f7 NFC \u00b7 " + periodNote()),
     ].join("");
   }
 
@@ -593,9 +593,8 @@
     if (m) {
       rows.push(tipRow("REG → NFC", fmtPct(m.cvr_reg_nfc, 2)));
       rows.push(tipRow("NFC", fmtInt(m.nfc)));
-      rows.push(tipRow("New total revenue", fmtMoney(m.rev_total)));
-      rows.push(tipRow("New transaction revenue", fmtMoney(m.rev_txn)));
-      rows.push(tipRow("Revenue per NFC", fmtMoney(m.arpa, { exact: true })));
+      rows.push(tipRow("Total new revenue", fmtMoney(m.rev_total)));
+      rows.push(tipRow("Revenue per client", fmtMoney(m.arpa, { exact: true })));
       rows.push(tipRow("CPA", fmtMoney(m.cpa, { exact: true })));
 
     } else {
@@ -741,7 +740,9 @@
       var bench = vsBench(m.cvr_reg_nfc, s.benchmarks && s.benchmarks.cvr_reg_nfc,
                           s.benchmarks && s.benchmarks.label, true);
       html.push('<div class="fbench">' +
-        (bench || '<span class="vs">reference market</span>') + "</div>");
+        (bench
+          ? '<span class="fbench-k">REG\u2192NFC</span> ' + bench
+          : '<span class="vs">reference market</span>') + "</div>");
 
       M.STAGES.forEach(function (stage, i) {
         var v = m[stage];
@@ -763,6 +764,12 @@
             fmtPct(val, 1) + "</b>" + cmp + "</span><span></span></div>");
         }
       });
+      html.push('<div class="ffoot"><span>CPA</span><b>' +
+        fmtMoney(m.cpa, { exact: true }) + "</b>" +
+        '<span class="ffoot-sub">' +
+        (m.cpa === null ? "needs marketing_spend"
+          : "spend \u00f7 " + fmtInt(m.nfc) + " NFC") +
+        "</span></div>");
       html.push("</div>");
       return html.join("");
     }).join("");
@@ -771,7 +778,7 @@
   /* -------------------------------------------------------- small mults */
 
   var TREND_FMT = {
-    rev_total: fmtMoney, rev_txn: fmtMoney, nfc: fmtInt, reg: fmtInt,
+    rev_total: fmtMoney, nfc: fmtInt, reg: fmtInt,
     cvr_reg_nfc: function (v) { return fmtPct(v, 2); },
     cpa: function (v) { return fmtMoney(v, { exact: true }); },
     arpa: function (v) { return fmtMoney(v, { exact: true }); },
@@ -888,9 +895,8 @@
       fmt: function (x) { return fmtPct(x, 2); } },
     { key: "cpa", label: "CPA", get: function (s) { return v(s, "cpa"); },
       fmt: function (x) { return fmtMoney(x, { exact: true }); } },
-    { key: "rev_total", label: "New total rev", get: function (s) { return v(s, "rev_total"); }, fmt: fmtMoney },
-    { key: "rev_txn", label: "New txn rev", get: function (s) { return v(s, "rev_txn"); }, fmt: fmtMoney },
-    { key: "arpa", label: "Rev / NFC", get: function (s) { return v(s, "arpa"); },
+    { key: "rev_total", label: "Total new rev", get: function (s) { return v(s, "rev_total"); }, fmt: fmtMoney },
+    { key: "arpa", label: "Rev / client", get: function (s) { return v(s, "arpa"); },
       fmt: function (x) { return fmtMoney(x, { exact: true }); } },
     { key: "health", label: "Health", get: function (s) {
       return s.health && s.health.score !== null ? s.health.score : null; }, health: true },
@@ -974,7 +980,8 @@
 
   function renderMethodNote() {
     if (el.revenueBasisNote) {
-      el.revenueBasisNote.textContent = "Showing " + periodNote() + ".";
+      el.revenueBasisNote.textContent = "Showing " + periodNote() +
+        ". Switch Period to Year to date for the Jan-to-date total per market.";
     }
 
     el.healthFormula.textContent = M.HEALTH_COMPONENTS.map(function (c) {

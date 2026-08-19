@@ -515,3 +515,24 @@ footer.foot { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--b
   font-size: 11px;
   color: var(--text-muted);
 }
+
+/* Funnel card: the benchmark line names the metric it compares, and CPA closes
+   the card - the funnel's cost, next to the funnel that produced it. */
+.funnel-card .fbench .fbench-k { color: var(--text-muted); }
+.funnel-card .ffoot {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.funnel-card .ffoot b {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.funnel-card .ffoot .ffoot-sub { margin-left: auto; color: var(--text-muted); }
+.tooltip .tt-base { color: var(--text-muted); font-weight: 400; }
