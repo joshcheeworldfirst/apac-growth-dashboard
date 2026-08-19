@@ -48,6 +48,11 @@ total per market. It grows through the year as earlier cohorts keep trading, so 
 late month's value comes from clients won earlier, not that month's new ones. Revenue, NFC
 and CPA all describe the same clients, and every aggregate on the page names its period.
 
+**Funnel gaps are in percentage points**, not a ratio: both sides are already percentages,
+so 44.9% against a 67.1% benchmark is 22.2pp behind. The ratio form ("−33%") is true of the
+ratio but reads as a third of registrations lost, which is a different and much smaller
+quantity.
+
 **Benchmarking is tier-local.** The reference market is the yardstick for *mature* markets
 only, like for like — measuring a young market against a mature one reports its age, not
 its health. Growth and emerging markets are scored against the **best achievement YTD** in

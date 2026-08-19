@@ -64,7 +64,7 @@
     <div class="card">
       <div class="card-head">
         <h2>Conversion funnel — REG → Submit → L3 → NFC</h2>
-        <span class="hint">Bars are scaled within each market; step % compares against <span id="funnel-bench-name">the reference market</span></span>
+        <span class="hint">Bars are scaled within each market; each step is compared against <span id="funnel-bench-name">the reference market</span></span>
       </div>
       <div class="funnel-grid" id="funnel-grid"></div>
     </div>
@@ -165,6 +165,9 @@ Revenue per client
           their own tier. That bar is cumulative on purpose — year-to-date through the
           month on screen, not that month alone, so it does not swing on one month's
           noise.</p>
+          <p>Gaps are shown in <strong>percentage points</strong>: both sides are already
+          percentages, so 44.9% against a 67.1% benchmark is 22.2pp behind — not "−33%",
+          which is true of the ratio but reads as a third of registrations lost.</p>
           <div class="formula">Mature (SG, ANZ)
   → the UK, same period
 Growth (MY, VN)

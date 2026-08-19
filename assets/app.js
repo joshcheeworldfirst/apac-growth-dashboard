@@ -688,7 +688,14 @@
 
   /* --------------------------------------------------------------- funnel */
 
-  /* One rate against its benchmark.
+  /* One conversion rate against its benchmark, in PERCENTAGE POINTS.
+   *
+   * Both sides are already percentages, so the gap between them is a
+   * difference, not a ratio. A market converting 44.9% against a benchmark of
+   * 67.1% is 22.2pp behind; calling that "-33%" is arithmetically true of the
+   * ratio but invites reading it as "33% of registrations lost", which is a
+   * different and much smaller quantity. Points say plainly how much of the
+   * funnel is missing.
    *
    * `withLabel` names the benchmark; without it only the signed gap is drawn.
    * The benchmark is the same for every step of a card, so it is spelled out
@@ -697,23 +704,27 @@
    * reads as noise.
    *
    * A market that IS the benchmark is named as such rather than shown as
-   * "+0%", which would read as scraping level with a peer rather than setting
+   * "+0pp", which would read as scraping level with a peer rather than setting
    * the bar. */
+  var IN_LINE_PP = 0.01;   // within a point of the benchmark reads as level
+
   function vsBench(val, refVal, label, withLabel) {
-    if (val === null || val === undefined || !refVal || !label) return "";
+    if (val === null || val === undefined || refVal === null ||
+        refVal === undefined || !isFinite(refVal) || !label) return "";
     if (val === refVal) {
       return ' <span class="vs best">' + (withLabel ? esc(label) : "sets the bar") + "</span>";
     }
-    var d = val / refVal - 1;
-    var cls = Math.abs(d) < 0.02 ? "" : (d > 0 ? "above" : "below");
-    return ' <span class="vs ' + cls + '">' + (d >= 0 ? "+" : "") +
-      (d * 100).toFixed(0) + "%" + (withLabel ? " vs " + esc(label) : "") + "</span>";
+    var d = val - refVal;
+    var cls = Math.abs(d) < IN_LINE_PP ? "" : (d > 0 ? "above" : "below");
+    return ' <span class="vs ' + cls + '">' + (d >= 0 ? "+" : "\u2212") +
+      Math.abs(d * 100).toFixed(1) + "pp" +
+      (withLabel ? " vs " + esc(label) : "") + "</span>";
   }
 
   function renderFunnel(snap) {
     el.funnelBenchName.textContent =
-      "the UK for mature markets, and the best achievement YTD in their own tier " +
-      "for growth and emerging";
+      "the UK for mature markets, and the best achievement YTD in their own tier for " +
+      "growth and emerging. Gaps are in percentage points.";
 
     var shown = snap.filter(function (s) {
       return s.metrics && (!state.selected || s.market === state.selected);
