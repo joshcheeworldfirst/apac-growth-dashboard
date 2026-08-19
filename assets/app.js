@@ -344,6 +344,18 @@
       Object.keys(byBasis).forEach(function (b) {
         bits.push(SPEND_NOTE[b].replace("{}", byBasis[b].join(", ")));
       });
+
+      // Revenue is marketing-channel only, and the cohort workbook covers the
+      // eleven APAC markets but not the UK. Say so rather than letting a blank
+      // read as "marketing earned nothing here".
+      var noRev = withData.filter(function (s) { return s.metrics.rev_month === null; });
+      if (noRev.length) {
+        bits.push("<strong>No marketing revenue for " +
+          noRev.map(function (s) { return s.market; }).join(", ") +
+          "</strong> — the cohort workbook does not cover " +
+          (noRev.length === 1 ? "it" : "them") + ", so this is a reporting gap, " +
+          "not a zero.");
+      }
     }
     var band = !withData.length ? "nodata" : (noSpend.length || missing.length ? "watch" : "healthy");
     el.banner.innerHTML =
@@ -399,9 +411,11 @@
     el.kpis.innerHTML = [
       kpiCard("APAC new customers (NFC)", fmtInt(cur.nfc), "",
         prevCmp ? deltaVs(cur.nfc, prevCmp.nfc) : null),
-      kpiCard("Total revenue (whole book)", fmtMoney(cur.rev_book), "",
-        prevCmp ? deltaVs(cur.rev_book, prevCmp.rev_book) : null),
-      kpiCard("New-cohort revenue", fmtMoney(cur.rev_total), "month-1 revenue from this month's NFC",
+      kpiCard("Marketing revenue", fmtMoney(cur.rev_month),
+        "booked this month, all CY26 marketing cohorts",
+        prevCmp ? deltaVs(cur.rev_month, prevCmp.rev_month) : null),
+      kpiCard("New revenue (marketing)", fmtMoney(cur.rev_total),
+        "new customers acquired via marketing, this month",
         prevCmp ? deltaVs(cur.rev_total, prevCmp.rev_total) : null),
       kpiCard("REG → NFC conversion", fmtPct(cur.cvr_reg_nfc, 2),
         refCvr !== null ? "UK, mature reference " + fmtPct(refCvr, 2) : "no UK reference yet"),
@@ -574,10 +588,10 @@
     if (m) {
       rows.push(tipRow("REG → NFC", fmtPct(m.cvr_reg_nfc, 2)));
       rows.push(tipRow("NFC", fmtInt(m.nfc)));
-      rows.push(tipRow("New total revenue", fmtMoney(m.rev_total)));
+      rows.push(tipRow("New revenue (marketing)", fmtMoney(m.rev_total)));
       rows.push(tipRow("Revenue per NFC", fmtMoney(m.arpa, { exact: true })));
       rows.push(tipRow("CPA", fmtMoney(m.cpa, { exact: true })));
-      rows.push(tipRow("Total revenue", fmtMoney(m.rev_book)));
+      rows.push(tipRow("Marketing revenue", fmtMoney(m.rev_month)));
     } else {
       rows.push('<div class="tt-note">No data for this period.</div>');
     }
@@ -622,7 +636,13 @@
   /* ---------------------------------------------------------- health rail */
 
   function renderRank(snap) {
+    // The reference market is pinned to the bottom rather than ranked. It is
+    // the benchmark for both relative components, so those drop out and its
+    // score rests on growth alone - enough to top the list on one input, which
+    // would read as "the UK is our healthiest APAC market". It is not an APAC
+    // market at all.
     var sorted = snap.slice().sort(function (a, b) {
+      if (!a.meta.in_apac !== !b.meta.in_apac) return a.meta.in_apac ? -1 : 1;
       var as = a.health && a.health.score !== null ? a.health.score : -1;
       var bs = b.health && b.health.score !== null ? b.health.score : -1;
       return bs - as;
@@ -744,7 +764,7 @@
   /* -------------------------------------------------------- small mults */
 
   var TREND_FMT = {
-    rev_book: fmtMoney, rev_total: fmtMoney, rev_txn: fmtMoney, nfc: fmtInt, reg: fmtInt,
+    rev_month: fmtMoney, rev_total: fmtMoney, nfc: fmtInt, reg: fmtInt,
     cvr_reg_nfc: function (v) { return fmtPct(v, 2); },
     cpa: function (v) { return fmtMoney(v, { exact: true }); },
     arpa: function (v) { return fmtMoney(v, { exact: true }); },
@@ -861,9 +881,8 @@
       fmt: function (x) { return fmtPct(x, 2); } },
     { key: "cpa", label: "CPA", get: function (s) { return v(s, "cpa"); },
       fmt: function (x) { return fmtMoney(x, { exact: true }); } },
-    { key: "rev_book", label: "Total rev", get: function (s) { return v(s, "rev_book"); }, fmt: fmtMoney },
-    { key: "rev_total", label: "New-cohort rev", get: function (s) { return v(s, "rev_total"); }, fmt: fmtMoney },
-    { key: "rev_txn", label: "New txn rev", get: function (s) { return v(s, "rev_txn"); }, fmt: fmtMoney },
+    { key: "rev_month", label: "Mkt revenue", get: function (s) { return v(s, "rev_month"); }, fmt: fmtMoney },
+    { key: "rev_total", label: "New cohort rev", get: function (s) { return v(s, "rev_total"); }, fmt: fmtMoney },
     { key: "arpa", label: "Rev / NFC", get: function (s) { return v(s, "arpa"); },
       fmt: function (x) { return fmtMoney(x, { exact: true }); } },
     { key: "health", label: "Health", get: function (s) {
@@ -947,6 +966,17 @@
   /* --------------------------------------------------------- method notes */
 
   function renderMethodNote() {
+    if (el.revenueBasisNote) {
+      var covered = 0, total = 0;
+      snapshot().forEach(function (s) {
+        total++;
+        if (s.metrics && s.metrics.rev_month !== null) covered++;
+      });
+      el.revenueBasisNote.textContent =
+        "Marketing channel only, from the cohort workbook \u2014 " + covered +
+        " of " + total + " markets covered.";
+    }
+
     el.healthFormula.textContent = M.HEALTH_COMPONENTS.map(function (c) {
       return String(Math.round(c.weight * 100)).padStart(3) + "%  " + c.label;
     }).join("\n") + "\n\nBands\n" + M.BANDS.map(function (b) {
@@ -1094,7 +1124,7 @@
       ["trendMetric", "trend-metric"], ["themeBtn", "theme-btn"],
       ["importBtn", "import-btn"], ["dialog", "import-dialog"], ["pasteArea", "paste-area"],
       ["dlgMsg", "dlg-msg"], ["healthFormula", "health-formula"], ["footerNote", "footer-note"],
-      ["subtitle", "subtitle"],
+      ["subtitle", "subtitle"], ["revenueBasisNote", "revenue-basis-note"],
     ].forEach(function (pair) { el[pair[0]] = document.getElementById(pair[1]); });
 
     data.markets.forEach(function (mk) { marketsById[mk.market] = mk; });

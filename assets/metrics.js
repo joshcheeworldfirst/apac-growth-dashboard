@@ -16,8 +16,8 @@
   var NUMERIC_COLS = STAGES.concat([
     "new_reg_nfc",
     "new_total_revenue",
-    "new_transaction_revenue",
-    "total_gross_revenue",
+    "mkt_revenue",
+    "cohort_nfc",
     "marketing_spend",
   ]);
 
@@ -69,14 +69,23 @@
     m.is_partial = !!row.is_partial;
     m.period_label = row.period_label || null;
     m.spend_basis = row.spend_basis || null;
-    // Whole-book revenue for the market - every customer, not just this
-    // month's cohort. This is the market's headline revenue line.
-    m.rev_book = row.total_gross_revenue === undefined ? null : row.total_gross_revenue;
-    m.rev_total = row.new_total_revenue;
-    m.rev_txn = row.new_transaction_revenue;
-    m.rev_other =
-      m.rev_total !== null && m.rev_txn !== null ? m.rev_total - m.rev_txn : null;
-    m.txn_share = ratio(m.rev_txn, m.rev_total);
+    /* Revenue is the MARKETING channel only, read from the cohort workbook.
+     * Both figures cover customers marketing acquired in CY26 - neither is the
+     * market's whole book, because the question here is what marketing
+     * delivered, not what the business earned.
+     *
+     *   rev_month  every CY26 marketing cohort's revenue booked in this
+     *              calendar month. Compounds as earlier cohorts keep trading,
+     *              so it is the headline revenue line.
+     *   rev_total  this month's own cohort, in its first month only. Shares a
+     *              population with NFC and CPA, so revenue per NFC and CPA
+     *              describe the same customers.
+     *
+     * Dividing rev_month by NFC would mix populations - many months of cohorts
+     * over one month of acquisitions - so revenue per NFC uses rev_total. */
+    m.rev_month = row.mkt_revenue === undefined ? null : row.mkt_revenue;
+    m.rev_total = row.new_total_revenue === undefined ? null : row.new_total_revenue;
+    m.cohort_nfc = row.cohort_nfc === undefined ? null : row.cohort_nfc;
     m.spend = row.marketing_spend;
 
     // Funnel step conversion + end-to-end.
@@ -88,7 +97,6 @@
     // Unit economics.
     m.cpa = ratio(m.spend, m.nfc);
     m.arpa = ratio(m.rev_total, m.nfc); // revenue per new customer, month 1
-    m.arpa_txn = ratio(m.rev_txn, m.nfc);
 
     return m;
   }
@@ -195,15 +203,16 @@
       score: nfcGrowth === null ? null : clamp(80 + nfcGrowth * 160, 0, 100),
     };
 
-    // Prefer whole-book revenue - it is the market's headline line - and fall
-    // back to the new cohort where the book figure is not reported.
-    var revKey = current.rev_book !== null && previous && previous.rev_book
-      ? "rev_book" : "rev_total";
+    // Prefer the calendar-month marketing revenue - the headline line - and
+    // fall back to the month's own cohort where that is not reported.
+    var revKey = current.rev_month !== null && previous && previous.rev_month
+      ? "rev_month" : "rev_total";
     var revGrowth = growth(revKey);
     parts.revenue = {
       actual: revGrowth,
       benchmark: 0,
-      basis: revKey === "rev_book" ? "whole book" : "new cohort",
+      basis: revKey === "rev_month" ? "marketing revenue booked in month"
+        : "this month's marketing cohort",
       score: revGrowth === null ? null : clamp(80 + revGrowth * 160, 0, 100),
     };
 
@@ -267,7 +276,6 @@
       l3_approved: "l3", approved: "l3",
       first_trade: "nfc", nfc_customers: "nfc", new_first_customers: "nfc",
       total_revenue: "new_total_revenue", gross_revenue: "new_total_revenue",
-      transaction_revenue: "new_transaction_revenue",
       spend: "marketing_spend", cost: "marketing_spend", marketing_cost: "marketing_spend",
       country: "market", region: "market",
     };

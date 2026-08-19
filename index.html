@@ -77,9 +77,8 @@
         <h2>Trend by market</h2>
         <label class="field" style="margin-left:auto">Metric
           <select id="trend-metric" aria-label="Trend metric">
-            <option value="rev_book">Total revenue (whole book)</option>
-            <option value="rev_total">New-cohort revenue</option>
-            <option value="rev_txn">New transaction revenue</option>
+            <option value="rev_month">Marketing revenue (booked in month)</option>
+            <option value="rev_total">New revenue (marketing)</option>
             <option value="nfc">NFC (new first-trade customers)</option>
             <option value="reg">Registrations</option>
             <option value="cvr_reg_nfc">REG → NFC conversion</option>
@@ -135,12 +134,21 @@ REG→NFC    = NFC / REG</div>
 
         <div class="method">
           <h3>Revenue</h3>
-          <p>Two different lines, and mixing them up is not a subtle error — they differ by
-          two orders of magnitude. Total revenue is the market's whole book; new-cohort
-          revenue is month one from the customers acquired that month.</p>
-          <div class="formula">Total revenue  = whole book
-New-cohort rev = month 1, new customers
-Rev per NFC    = New-cohort rev / NFC</div>
+          <p>Revenue here is the <strong>marketing channel only</strong>, from customers
+          marketing acquired in CY26 — not the market's whole book. Two lines, answering
+          different questions, and mixing them up is not a subtle error.</p>
+          <p><em>Marketing revenue</em> is everything every CY26 marketing cohort booked in
+          the month; it compounds as earlier cohorts keep trading, so it is the headline
+          line. <em>New cohort revenue</em> is just the month's own cohort in its first
+          month — the same customers CPA is measured against, which is why revenue per NFC
+          divides that one and not the headline.</p>
+          <div class="formula">Marketing revenue
+  = Σ all CY26 cohorts booked this month
+New cohort rev
+  = month 1 of this month's cohort
+Rev per NFC
+  = New cohort rev / NFC</div>
+          <p style="margin-top:8px" id="revenue-basis-note"></p>
         </div>
 
         <div class="method">
@@ -200,8 +208,8 @@ set in assumptions.csv beats both.</div>
       <button id="dlg-close" type="button">Close</button>
     </div>
     <p>Copy the rows straight out of the working sheet (including the header row) and paste below. Tab-separated or CSV both work. Existing rows for the same month and market are replaced; every other month is left alone.</p>
-    <p>Required columns: <code>month</code>, <code>market</code>. Optional: <code>reg</code>, <code>submit</code>, <code>l3</code>, <code>nfc</code>, <code>new_total_revenue</code>, <code>new_transaction_revenue</code>, <code>total_gross_revenue</code>, <code>marketing_spend</code>.</p>
-    <textarea id="paste-area" spellcheck="false" placeholder="month&#9;market&#9;reg&#9;submit&#9;l3&#9;nfc&#9;new_total_revenue&#9;new_transaction_revenue&#9;marketing_spend&#10;2026-08&#9;SG&#9;…"></textarea>
+    <p>Required columns: <code>month</code>, <code>market</code>. Optional: <code>reg</code>, <code>submit</code>, <code>l3</code>, <code>nfc</code>, <code>new_total_revenue</code>, <code>mkt_revenue</code>, <code>marketing_spend</code>.</p>
+    <textarea id="paste-area" spellcheck="false" placeholder="month&#9;market&#9;reg&#9;submit&#9;l3&#9;nfc&#9;new_total_revenue&#9;marketing_spend&#10;2026-08&#9;SG&#9;…"></textarea>
     <div class="dlg-foot">
       <button class="primary" id="dlg-apply" type="button">Preview &amp; apply</button>
       <button id="dlg-template" type="button">Insert blank template</button>

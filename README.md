@@ -34,19 +34,25 @@ REG→Submit  = Submit / REG              Submit→L3 = L3 / Submit
 L3→NFC      = NFC / L3                  REG→NFC   = NFC / REG
 
 CPA             = Marketing spend / NFC
-Revenue per NFC = New-cohort revenue / NFC
+Revenue per NFC = New cohort revenue / NFC
 NFC growth      = NFC this month / NFC last month − 1
 ```
 
-Every figure is one division of two reported numbers. There is no margin, retention
-rate, customer-base estimate or horizon behind any of them.
+Every figure is one division of two reported numbers. There is no margin, retention rate,
+customer-base estimate or horizon behind any of them.
 
-**Benchmarking is tier-local.** The reference market is the yardstick for *mature*
-markets only, like for like — measuring a young market against a mature one reports its
-age, not its health. Growth and emerging markets are scored against the **best achievement
-YTD** in their own tier, a target rather than a like-for-like read, held year-to-date so
-the bar does not move every time you change the month. An explicit per-market target
-overrides both.
+**Everything is scoped to one acquisition channel.** Revenue, NFC and CPA all describe the
+customers that channel acquired, so they can be divided by one another without mixing
+populations. Two revenue lines exist and they are not interchangeable: *marketing revenue*
+is every cohort's revenue booked in the month and compounds through the year; *new cohort
+revenue* is the month's own cohort in its first month, which is the one revenue per NFC
+divides.
+
+**Benchmarking is tier-local.** The reference market is the yardstick for *mature* markets
+only, like for like — measuring a young market against a mature one reports its age, not
+its health. Growth and emerging markets are scored against the **best achievement YTD** in
+their own tier, a target rather than a like-for-like read, held year-to-date so the bar does
+not move every time you change the month. An explicit per-market target overrides both.
 
 **Health score** is a weighted 0–100 blend: REG→NFC conversion 35%, CPA 30%, NFC growth
 20%, revenue growth 15%. Components with no data are dropped and the remaining weights
