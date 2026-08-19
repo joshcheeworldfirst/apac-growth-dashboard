@@ -6,7 +6,7 @@
   "use strict";
 
   var M = window.Metrics;
-  var REFERENCE_MARKET = "UK"; // non-APAC, used as the mature-market yardstick
+  var REFERENCE_MARKET = "UK"; // non-APAC, and the yardstick for mature markets only
 
   var TIERS = {
     mature: { label: "Mature", color: "var(--series-1)", order: 0 },
@@ -77,12 +77,6 @@
   function fmtNum(v, dp) {
     if (v === null || v === undefined || !isFinite(v)) return "—";
     return v.toFixed(dp === undefined ? 1 : dp);
-  }
-
-  function fmtMonths(v) {
-    if (v === null || v === undefined || !isFinite(v)) return "—";
-    if (v > 240) return "> 20 yrs";
-    return v.toFixed(1) + " mo";
   }
 
   function monthLabel(m) {
@@ -172,30 +166,75 @@
    * Benchmarks a market is scored against: an explicit target from
    * assumptions.csv when set, otherwise the reference market's own actual.
    */
-  function benchmarksFor(market) {
+  var BENCH_KEYS = ["cvr_reg_nfc", "cvr_reg_submit", "cvr_submit_l3", "cvr_l3_nfc", "cpa"];
+
+  /* Benchmarking is tier-local.
+   *
+   * UK is the yardstick for mature markets and nothing else. Holding a young
+   * emerging market against a mature one measures its age, not its health -
+   * it will read "at risk" for as long as it is new, which tells the reader
+   * nothing they did not already know. Growth and emerging markets are scored
+   * against the best actual in their own tier instead: the same "how much of
+   * the achievable am I hitting" question, asked of the right peer group.
+   *
+   * An explicit target in assumptions.csv beats both, for any market. */
+  function tierBenchmarks(byMarket) {
+    var out = {};
+    Object.keys(TIERS).forEach(function (tier) {
+      if (tier === "mature") {
+        var ref = byMarket[REFERENCE_MARKET];
+        out[tier] = { label: REFERENCE_MARKET, self: REFERENCE_MARKET };
+        BENCH_KEYS.forEach(function (k) { out[tier][k] = ref ? ref[k] : null; });
+        return;
+      }
+      var peers = data.markets.filter(function (mk) {
+        return mk.tier === tier && byMarket[mk.market];
+      });
+      out[tier] = { label: "best in tier", self: null };
+      BENCH_KEYS.forEach(function (k) {
+        out[tier][k] = bestOf(peers, byMarket, k, k !== "cpa");
+      });
+    });
+    return out;
+  }
+
+  function bestOf(peers, byMarket, key, higherIsBetter) {
+    var vals = peers.map(function (mk) { return byMarket[mk.market][key]; })
+      .filter(function (x) { return x !== null && x !== undefined && isFinite(x) && x > 0; });
+    if (!vals.length) return null;
+    return higherIsBetter ? Math.max.apply(null, vals) : Math.min.apply(null, vals);
+  }
+
+  function benchmarksFor(market, tierBench) {
     var mk = marketsById[market];
-    var ref = market === REFERENCE_MARKET ? null : periodMetrics(REFERENCE_MARKET);
-    return {
-      cvr_reg_nfc: mk.target_reg_to_nfc_pct !== null && mk.target_reg_to_nfc_pct !== undefined
-        ? mk.target_reg_to_nfc_pct / 100
-        : (ref ? ref.cvr_reg_nfc : null),
-      cpa: mk.target_cpa !== null && mk.target_cpa !== undefined
-        ? mk.target_cpa
-        : (ref ? ref.cpa : null),
-    };
+    var tb = tierBench[mk.tier] || {};
+    // A market that IS its tier's reference has nothing to be measured against.
+    var isRef = tb.self === market;
+    var b = { label: isRef ? null : tb.label, tier: mk.tier };
+    BENCH_KEYS.forEach(function (k) { b[k] = isRef ? null : (tb[k] === undefined ? null : tb[k]); });
+    if (mk.target_reg_to_nfc_pct !== null && mk.target_reg_to_nfc_pct !== undefined) {
+      b.cvr_reg_nfc = mk.target_reg_to_nfc_pct / 100;
+      b.label = "target";
+    }
+    if (mk.target_cpa !== null && mk.target_cpa !== undefined) b.cpa = mk.target_cpa;
+    return b;
   }
 
   /** Everything the render pass needs, computed once per state change. */
   function snapshot() {
     var out = [];
+    // Every market's metrics first - the tier benchmarks are derived from them.
+    var byMarket = {};
+    data.markets.forEach(function (mk) { byMarket[mk.market] = periodMetrics(mk.market); });
+    var tierBench = tierBenchmarks(byMarket);
     data.markets.forEach(function (mk) {
-      var cur = periodMetrics(mk.market);
+      var cur = byMarket[mk.market];
       var entry = {
         market: mk.market,
         meta: mk,
         metrics: cur,
         health: null,
-        benchmarks: benchmarksFor(mk.market),
+        benchmarks: benchmarksFor(mk.market, tierBench),
       };
       if (cur) {
         entry.health = M.scoreHealth(cur, previousMonthMetrics(mk.market), mk, entry.benchmarks);
@@ -216,7 +255,6 @@
     renderMap(snap);
     renderRank(snap);
     renderFunnel(snap);
-    renderScatter(snap);
     renderTrends();
     renderTable(snap);
     renderMethodNote();
@@ -250,24 +288,15 @@
         bits.push("No data for " + missing.map(function (m) { return m.market; }).join(", ") + ".");
       }
       if (noSpend.length) {
-        bits.push("<strong>CPA, payback and LTV:CAC are blank for " +
+        bits.push("<strong>CPA is blank for " +
           noSpend.map(function (s) { return s.market; }).join(", ") +
-          "</strong> — those need the <code>marketing_spend</code> column.");
+          "</strong> — that needs the <code>marketing_spend</code> column.");
       }
       var partial = withData.filter(function (s) { return s.metrics.is_partial; });
       if (partial.length) {
         var label = partial[0].metrics.period_label || "a part month";
         bits.push("<strong>" + esc(label) + " is a partial period</strong> — " +
           "month-on-month momentum is skipped rather than compared against a full month.");
-      }
-      var bases = {};
-      withData.forEach(function (s) {
-        if (s.metrics.arpu_basis) bases[s.metrics.arpu_basis] = true;
-      });
-      var basisList = Object.keys(bases);
-      if (basisList.length) {
-        bits.push("Net LTV and payback use <strong>" + esc(basisList.join(" / ")) +
-          "</strong> as revenue per customer.");
       }
       var allocated = withData.filter(function (s) {
         return s.metrics.spend_basis && s.metrics.spend_basis.indexOf("allocated") === 0;
@@ -337,13 +366,11 @@
       kpiCard("New-cohort revenue", fmtMoney(cur.rev_total), "month-1 revenue from this month's NFC",
         prevCmp ? deltaVs(cur.rev_total, prevCmp.rev_total) : null),
       kpiCard("REG → NFC conversion", fmtPct(cur.cvr_reg_nfc, 2),
-        refCvr !== null ? "UK reference " + fmtPct(refCvr, 2) : "no UK reference yet"),
+        refCvr !== null ? "UK, mature reference " + fmtPct(refCvr, 2) : "no UK reference yet"),
       kpiCard("Blended CPA", fmtMoney(cur.cpa, { exact: cur.cpa !== null && cur.cpa < 10000 }),
         cur.cpa === null ? "needs marketing_spend" : "",
         cur.cpa !== null && prevCmp ? deltaVs(cur.cpa, prevCmp.cpa, { lowerIsBetter: true }) : null),
       kpiCard("Revenue per NFC", fmtMoney(cur.arpa, { exact: true }), "month-1 revenue per new customer"),
-      kpiCard("CAC payback", fmtMonths(cur.payback_months),
-        cur.payback_months === null ? "needs marketing_spend" : "target ≤ 12 mo"),
     ].join("");
   }
 
@@ -512,14 +539,14 @@
       rows.push(tipRow("New total revenue", fmtMoney(m.rev_total)));
       rows.push(tipRow("Revenue per NFC", fmtMoney(m.arpa, { exact: true })));
       rows.push(tipRow("CPA", fmtMoney(m.cpa, { exact: true })));
-      rows.push(tipRow("CAC payback", fmtMonths(m.payback_months)));
-      rows.push(tipRow("Net LTV : CAC", m.ltv_cac === null ? "—" : fmtNum(m.ltv_cac, 2) + "×"));
+      rows.push(tipRow("Total revenue", fmtMoney(m.rev_book)));
     } else {
       rows.push('<div class="tt-note">No data for this period.</div>');
     }
-    var note = s.health && s.health.coverage < 1
-      ? '<div class="tt-note">Score uses ' + Math.round(s.health.coverage * 100) +
-        "% of the health inputs — the rest are missing.</div>"
+    var note = s.health && s.health.scored < s.health.total_components
+      ? '<div class="tt-note">Score rests on ' + s.health.scored + " of " +
+        s.health.total_components + " inputs (" + Math.round(s.health.coverage * 100) +
+        "% of the weight) — the rest have no data for this period.</div>"
       : "";
     showTip(e,
       '<div class="tt-title"><span style="color:' + BAND_COLOR[band.key] + '">' +
@@ -566,6 +593,13 @@
       var band = s.health ? s.health.band : { key: "nodata", label: "No data" };
       var score = s.health && s.health.score !== null ? Math.round(s.health.score) : "—";
       var tier = TIERS[s.meta.tier] ? TIERS[s.meta.tier].label : s.meta.tier;
+      // A score built on two inputs is not comparable to one built on four,
+      // so the rank list says so rather than leaving it to the tooltip.
+      var partial = s.health && s.health.score !== null &&
+        s.health.scored < s.health.total_components
+        ? "<span class='cov'>" + s.health.scored + " of " + s.health.total_components +
+          " inputs</span>"
+        : "";
       return '<button class="rank-row' + (state.selected === s.market ? " selected" : "") +
         '" data-market="' + s.market + '" type="button">' +
         '<span style="color:' + BAND_COLOR[band.key] + '">' + BAND_ICON[band.key] + "</span>" +
@@ -574,7 +608,8 @@
         (s.meta.group && s.meta.group !== s.market ? " · " + esc(s.meta.group) : "") +
         (s.meta.in_apac ? "" : " · reference") + "</span></span>" +
         "<span><span class='score'>" + score + "</span><br>" +
-        "<span class='state'>" + esc(band.label) + "</span></span></button>";
+        "<span class='state'>" + esc(band.label) + "</span>" + partial +
+        "</span></span></button>";
     }).join("");
 
     Array.prototype.forEach.call(el.rankList.querySelectorAll("[data-market]"), function (node) {
@@ -589,10 +624,21 @@
 
   /* --------------------------------------------------------------- funnel */
 
+  /* Render "x% vs <benchmark>" for one rate, or name the market as its tier's
+   * best where it IS the benchmark - "+0% vs best in tier" is noise, and worse,
+   * reads as a market scraping level with a peer rather than setting the bar. */
+  function vsBench(val, refVal, label) {
+    if (val === null || val === undefined || !refVal || !label) return "";
+    if (val === refVal) return ' <span class="vs best">best in tier</span>';
+    var d = val / refVal - 1;
+    var cls = Math.abs(d) < 0.02 ? "" : (d > 0 ? "above" : "below");
+    return ' <span class="vs ' + cls + '">' + (d >= 0 ? "+" : "") +
+      (d * 100).toFixed(0) + "% vs " + esc(label) + "</span>";
+  }
+
   function renderFunnel(snap) {
-    var refState = snap.filter(function (s) { return s.market === REFERENCE_MARKET; })[0];
-    var ref = refState ? refState.metrics : null;
-    el.funnelBenchName.textContent = ref ? "UK" : "nothing (no UK data)";
+    el.funnelBenchName.textContent =
+      "UK for mature markets, and the best actual in their own tier for growth and emerging";
 
     var shown = snap.filter(function (s) {
       return s.metrics && (!state.selected || s.market === state.selected);
@@ -614,7 +660,9 @@
       var html = ['<div class="funnel-card">'];
       html.push('<div class="fh"><span class="mk">' + esc(s.market) + "</span>" +
         '<span class="tier">' + esc(s.meta.name) + "</span>" +
-        '<span class="e2e">REG→NFC <b>' + fmtPct(m.cvr_reg_nfc, 2) + "</b></span></div>");
+        '<span class="e2e">REG→NFC <b>' + fmtPct(m.cvr_reg_nfc, 2) + "</b>" +
+        vsBench(m.cvr_reg_nfc, s.benchmarks && s.benchmarks.cvr_reg_nfc,
+                s.benchmarks && s.benchmarks.label) + "</span></div>");
 
       M.STAGES.forEach(function (stage, i) {
         var v = m[stage];
@@ -628,15 +676,10 @@
         if (i < steps.length) {
           var st = steps[i];
           var val = m[st[2]];
-          var refVal = ref ? ref[st[2]] : null;
-          var cmp = "";
-          // No point comparing the reference market against itself.
-          if (val !== null && refVal && s.market !== REFERENCE_MARKET) {
-            var d = val / refVal - 1;
-            var cls = Math.abs(d) < 0.02 ? "" : (d > 0 ? "above" : "below");
-            cmp = ' <span class="vs ' + cls + '">' + (d >= 0 ? "+" : "") +
-              (d * 100).toFixed(0) + "% vs UK</span>";
-          }
+          // Each market is measured against its own tier's reference, so an
+          // emerging market is never held to a mature market's funnel.
+          var refVal = s.benchmarks ? s.benchmarks[st[2]] : null;
+          var cmp = vsBench(val, refVal, s.benchmarks && s.benchmarks.label);
           html.push('<div class="step-cvr"><span></span><span class="arrow">↳ <b>' +
             fmtPct(val, 1) + "</b>" + cmp + "</span><span></span></div>");
         }
@@ -646,167 +689,6 @@
     }).join("");
   }
 
-  /* -------------------------------------------------------------- scatter */
-
-  function renderScatter(snap) {
-    var pts = snap.filter(function (s) {
-      return s.metrics && s.metrics.payback_months !== null && s.metrics.ltv_cac !== null;
-    });
-    if (!pts.length) {
-      el.scatter.innerHTML = '<div class="empty">Needs <code>marketing_spend</code> to plot ' +
-        "CAC payback and LTV:CAC. Add that column and re-import.</div>";
-      el.scatterLegend.innerHTML = "";
-      return;
-    }
-
-    var W = 900, H = 420, pad = { l: 56, r: 24, t: 16, b: 48 };
-    var iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
-    var targetPay = 12, targetRatio = 2;
-
-    var maxX = Math.max(targetPay * 1.6, Math.max.apply(null, pts.map(function (p) {
-      return Math.min(p.metrics.payback_months, 60);
-    })) * 1.15);
-    var maxY = Math.max(targetRatio * 1.6, Math.max.apply(null, pts.map(function (p) {
-      return p.metrics.ltv_cac;
-    })) * 1.15);
-    var maxRev = Math.max.apply(null, pts.map(function (p) { return p.metrics.rev_total || 0; })) || 1;
-
-    var X = function (v) { return pad.l + (Math.min(v, maxX) / maxX) * iw; };
-    var Y = function (v) { return pad.t + ih - (Math.min(v, maxY) / maxY) * ih; };
-    var R = function (v) { return 6 + Math.sqrt(Math.max(v, 0) / maxRev) * 17; };
-
-    var svg = ['<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Scatter of CAC ' +
-      'payback against LTV to CAC ratio, one bubble per market">'];
-
-    // target quadrant: payback at or under target AND ratio at or above target
-    svg.push('<rect class="quadrant" x="' + pad.l + '" y="' + pad.t + '" width="' +
-      (X(targetPay) - pad.l) + '" height="' + (Y(targetRatio) - pad.t) + '" rx="4"></rect>');
-
-    // gridlines + ticks
-    var xTicks = niceTicks(maxX, 6), yTicks = niceTicks(maxY, 5);
-    yTicks.forEach(function (t) {
-      svg.push('<line class="gridline" x1="' + pad.l + '" y1="' + Y(t) + '" x2="' + (W - pad.r) +
-        '" y2="' + Y(t) + '"></line>');
-      svg.push('<text class="axis-text" x="' + (pad.l - 8) + '" y="' + (Y(t) + 4) +
-        '" text-anchor="end">' + t.toFixed(t < 10 ? 1 : 0) + "×</text>");
-    });
-    xTicks.forEach(function (t) {
-      svg.push('<text class="axis-text" x="' + X(t) + '" y="' + (H - pad.b + 18) +
-        '" text-anchor="middle">' + t.toFixed(0) + "</text>");
-    });
-    svg.push('<line class="axis-line" x1="' + pad.l + '" y1="' + (pad.t + ih) + '" x2="' +
-      (W - pad.r) + '" y2="' + (pad.t + ih) + '"></line>');
-
-    // target reference lines
-    svg.push('<line class="target-line" x1="' + X(targetPay) + '" y1="' + pad.t + '" x2="' +
-      X(targetPay) + '" y2="' + (pad.t + ih) + '"></line>');
-    svg.push('<text class="target-text" x="' + (X(targetPay) + 5) + '" y="' + (pad.t + 12) +
-      '">payback target 12 mo</text>');
-    svg.push('<line class="target-line" x1="' + pad.l + '" y1="' + Y(targetRatio) + '" x2="' +
-      (W - pad.r) + '" y2="' + Y(targetRatio) + '"></line>');
-    svg.push('<text class="target-text" x="' + (W - pad.r - 4) + '" y="' + (Y(targetRatio) - 6) +
-      '" text-anchor="end">Net LTV:CAC target 2×</text>');
-
-    svg.push('<text class="axis-title" x="' + (pad.l + iw / 2) + '" y="' + (H - 8) +
-      '" text-anchor="middle">CAC payback (months) — lower is better</text>');
-    svg.push('<text class="axis-title" transform="translate(14,' + (pad.t + ih / 2) +
-      ') rotate(-90)" text-anchor="middle">Net LTV : CAC — higher is better</text>');
-
-    // Every bubble is directly labelled (the relief rule - one tier colour sits
-    // under 3:1 on the light surface), so labels must not collide.
-    var placed = pts.map(function (p) {
-      return {
-        p: p,
-        x: X(p.metrics.payback_months),
-        y: Y(p.metrics.ltv_cac),
-        r: R(p.metrics.rev_total || 0),
-      };
-    });
-    layoutLabels(placed, pad.t);
-
-    // largest first, so a small bubble is never buried under a big one
-    placed.slice().sort(function (a, b) {
-      return (b.p.metrics.rev_total || 0) - (a.p.metrics.rev_total || 0);
-    }).forEach(function (it) {
-      var tier = TIERS[it.p.meta.tier] || TIERS.emerging;
-      var dim = state.selected && state.selected !== it.p.market;
-      svg.push('<circle class="bubble' +
-        (it.p.market === REFERENCE_MARKET ? " reference" : "") + '" data-market="' + it.p.market +
-        '" cx="' + it.x.toFixed(1) + '" cy="' + it.y.toFixed(1) + '" r="' + it.r.toFixed(1) +
-        '" fill="' + tier.color + '" opacity="' + (dim ? 0.25 : 0.85) + '"></circle>');
-      if (it.leader) {
-        svg.push('<line class="leader" x1="' + it.x.toFixed(1) + '" y1="' +
-          (it.y - it.r - 2).toFixed(1) + '" x2="' + it.x.toFixed(1) + '" y2="' +
-          (it.ly + 3).toFixed(1) + '" opacity="' + (dim ? 0.3 : 1) + '"></line>');
-      }
-      svg.push('<text class="bubble-label" x="' + it.x.toFixed(1) + '" y="' + it.ly.toFixed(1) +
-        '" text-anchor="middle" opacity="' + (dim ? 0.35 : 1) + '">' + esc(it.p.market) + "</text>");
-    });
-
-    svg.push("</svg>");
-    el.scatter.innerHTML = svg.join("");
-
-    el.scatterLegend.innerHTML = Object.keys(TIERS)
-      .sort(function (a, b) { return TIERS[a].order - TIERS[b].order; })
-      .map(function (k) {
-        return '<span class="legend-item"><span class="dot" style="background:' +
-          TIERS[k].color + '"></span>' + TIERS[k].label + " markets</span>";
-      }).join("") +
-      '<span class="legend-item" style="color:var(--text-muted)">Bubble area ∝ new total revenue</span>' +
-      '<span class="legend-item" style="color:var(--text-muted)">Dashed outline = ' +
-      REFERENCE_MARKET + " reference market (not APAC)</span>";
-
-    Array.prototype.forEach.call(el.scatter.querySelectorAll("[data-market]"), function (node) {
-      var mk = node.getAttribute("data-market");
-      node.addEventListener("mousemove", function (e) {
-        showMarketTip(e, snap.filter(function (x) { return x.market === mk; })[0]);
-      });
-      node.addEventListener("mouseleave", hideTip);
-      node.addEventListener("click", function () { toggleSelect(mk); });
-    });
-  }
-
-  /**
-   * Place one label per bubble, above it by default, nudged up in 13px steps
-   * while it would sit on top of an already-placed label. Anything pushed past
-   * the top of the plot flips below its bubble instead and gets a leader line
-   * so it stays attached to the right mark.
-   */
-  function layoutLabels(items, topLimit) {
-    var LH = 13, HALF_W = 26;
-    var done = [];
-    var collides = function (x, ly) {
-      return done.some(function (d) {
-        return Math.abs(d.ly - ly) < LH && Math.abs(d.x - x) < HALF_W * 2;
-      });
-    };
-    items.slice().sort(function (a, b) { return a.y - b.y; }).forEach(function (it) {
-      var ly = it.y - it.r - 7;
-      var guard = 0;
-      while (collides(it.x, ly) && guard++ < 40) ly -= LH;
-      if (ly < topLimit + LH) {
-        // no room above - drop it below the bubble and draw a leader
-        ly = it.y + it.r + 14;
-        guard = 0;
-        while (collides(it.x, ly) && guard++ < 40) ly += LH;
-        it.leader = false;
-      } else {
-        it.leader = ly < it.y - it.r - 16;
-      }
-      it.ly = ly;
-      done.push(it);
-    });
-  }
-
-  function niceTicks(max, count) {
-    var step = Math.pow(10, Math.floor(Math.log10(max / count)));
-    var err = max / count / step;
-    if (err >= 7.5) step *= 10; else if (err >= 3) step *= 5; else if (err >= 1.5) step *= 2;
-    var out = [];
-    for (var v = 0; v <= max + 1e-9; v += step) out.push(Number(v.toFixed(6)));
-    return out;
-  }
-
   /* -------------------------------------------------------- small mults */
 
   var TREND_FMT = {
@@ -814,7 +696,6 @@
     cvr_reg_nfc: function (v) { return fmtPct(v, 2); },
     cpa: function (v) { return fmtMoney(v, { exact: true }); },
     arpa: function (v) { return fmtMoney(v, { exact: true }); },
-    payback_months: fmtMonths,
   };
 
   function renderTrends() {
@@ -860,7 +741,7 @@
     var max = Math.max.apply(null, vals);
     // Value axes start at zero so bar-like magnitude reads honestly; rate metrics
     // get a padded window because their interesting range rarely includes zero.
-    var isRate = metric === "cvr_reg_nfc" || metric === "payback_months";
+    var isRate = metric === "cvr_reg_nfc";
     var lo = isRate ? min - (max - min || Math.abs(min) * 0.1 || 1) * 0.25 : Math.min(0, min);
     var hi = max + (max - lo || Math.abs(max) * 0.1 || 1) * 0.15;
     if (hi === lo) hi = lo + 1;
@@ -933,12 +814,6 @@
     { key: "rev_txn", label: "New txn rev", get: function (s) { return v(s, "rev_txn"); }, fmt: fmtMoney },
     { key: "arpa", label: "Rev / NFC", get: function (s) { return v(s, "arpa"); },
       fmt: function (x) { return fmtMoney(x, { exact: true }); } },
-    { key: "payback_months", label: "Payback", get: function (s) { return v(s, "payback_months"); },
-      fmt: fmtMonths },
-    { key: "ltv", label: "Net LTV", get: function (s) { return v(s, "ltv"); },
-      fmt: function (x) { return fmtMoney(x, { exact: true }); } },
-    { key: "ltv_cac", label: "Net LTV:CAC", get: function (s) { return v(s, "ltv_cac"); },
-      fmt: function (x) { return x === null ? "—" : fmtNum(x, 2) + "×"; } },
     { key: "health", label: "Health", get: function (s) {
       return s.health && s.health.score !== null ? s.health.score : null; }, health: true },
   ];
@@ -1020,25 +895,18 @@
   /* --------------------------------------------------------- method notes */
 
   function renderMethodNote() {
-    var bases = {};
-    snapshot().forEach(function (s) {
-      if (s.metrics && s.metrics.arpu_basis) bases[s.metrics.arpu_basis] = true;
-    });
-    var note = document.getElementById("arpu-basis-note");
-    if (note) {
-      note.textContent = "Currently: " + Object.keys(bases).join(", ") + ".";
-    }
     el.healthFormula.textContent = M.HEALTH_COMPONENTS.map(function (c) {
       return String(Math.round(c.weight * 100)).padStart(3) + "%  " + c.label;
-    }).join("\n") + "\n\nBands: " + M.BANDS.map(function (b) {
-      return b.label + " " + (b.min === -Infinity ? "< 50" : "≥ " + b.min);
-    }).join(" · ");
+    }).join("\n") + "\n\nBands\n" + M.BANDS.map(function (b) {
+      return "  " + (b.min === -Infinity ? "< 50" : "\u2265 " + b.min).padStart(5) +
+        "  " + b.label;
+    }).join("\n");
 
     var gen = data.generated ? new Date(data.generated).toUTCString() : "unknown";
     el.footerNote.innerHTML = "Data built " + esc(gen) + " from " + esc(data.source || "data/*.csv") +
       ". Map geometry: Natural Earth (public domain) via world-atlas. " +
-      "Gross margin, NRR and the LTV horizon are assumptions set in " +
-      "<code>data/assumptions.csv</code> — confirm them with Finance before quoting LTV externally.";
+      "Every figure on this page is a ratio of two reported numbers \u2014 there are no " +
+      "margin, retention or horizon assumptions behind any of them.";
   }
 
   /* ---------------------------------------------------------------- paste */
@@ -1054,7 +922,12 @@
   function applyPaste() {
     var known = data.markets.map(function (m) { return m.market; });
     var text = el.pasteArea.value;
-    state.isDemo = !!window.APAC_DEMO_TSV && text.trim() === window.APAC_DEMO_TSV.trim();
+    // Sticky, and never cleared by a later paste. A paste merges rows rather
+    // than replacing the dataset, so once invented numbers are in the page some
+    // of what is on screen stays invented - dropping the warning at that point
+    // would be worse than never showing it.
+    state.isDemo = state.isDemo ||
+      (!!window.APAC_DEMO_TSV && text.trim() === window.APAC_DEMO_TSV.trim());
     var res = M.parsePaste(text, known);
     if (!res.rows.length) {
       setMsg((res.errors[0] || "Nothing recognised in that paste."), "err");
@@ -1162,8 +1035,8 @@
     [
       ["banner", "banner"], ["kpis", "kpis"], ["mapStage", "map-stage"],
       ["mapLegend", "map-legend"], ["rankList", "rank-list"], ["funnelGrid", "funnel-grid"],
-      ["funnelBenchName", "funnel-bench-name"], ["scatter", "scatter"],
-      ["scatterLegend", "scatter-legend"], ["trendGrid", "trend-grid"],
+      ["funnelBenchName", "funnel-bench-name"],
+      ["trendGrid", "trend-grid"],
       ["tableHead", "table-head"], ["tableBody", "table-body"], ["tooltip", "tooltip"],
       ["monthSelect", "month-select"], ["periodSelect", "period-select"],
       ["trendMetric", "trend-metric"], ["themeBtn", "theme-btn"],

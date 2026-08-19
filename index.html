@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>APAC Growth Dashboard</title>
-<meta name="description" content="APAC market health: conversion funnel, CPA, revenue, payback and LTV by market.">
+<meta name="description" content="APAC market health by market: conversion funnel, NFC, revenue and CPA.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14'>🌏</text></svg>">
 <link rel="stylesheet" href="assets/styles.css">
 </head>
@@ -14,7 +14,7 @@
   <div class="top-inner">
     <div class="brand">
       <h1>APAC Growth Dashboard</h1>
-      <span class="sub" id="subtitle">Market health across the acquisition funnel and unit economics</span>
+      <span class="sub" id="subtitle">Conversion funnel, NFC, revenue and CPA by market</span>
     </div>
     <div class="controls">
       <label class="field">Month
@@ -70,18 +70,6 @@
     </div>
   </section>
 
-  <!-- -------------------------------------------------- unit economics -->
-  <section>
-    <div class="card">
-      <div class="card-head">
-        <h2>Unit economics — CAC payback vs Net LTV : CAC</h2>
-        <span class="hint">Bubble area = new total revenue. Top-left quadrant is the target zone.</span>
-      </div>
-      <div class="scatter-wrap" id="scatter"></div>
-      <div class="legend" id="scatter-legend"></div>
-    </div>
-  </section>
-
   <!-- ----------------------------------------------------------- trends -->
   <section>
     <div class="card">
@@ -97,7 +85,6 @@
             <option value="cvr_reg_nfc">REG → NFC conversion</option>
             <option value="cpa">CPA</option>
             <option value="arpa">Revenue per NFC</option>
-            <option value="payback_months">CAC payback (months)</option>
           </select>
         </label>
       </div>
@@ -143,38 +130,45 @@ REG→NFC    = NFC / REG</div>
         </div>
 
         <div class="method">
-          <h3>Revenue per customer</h3>
-          <p>Month-one revenue from the cohort acquired that month.</p>
-          <div class="formula">Revenue per NFC = New total revenue / NFC
-Gross profit per NFC
-  = Revenue per NFC × Gross margin %</div>
+          <h3>Revenue</h3>
+          <p>Two different lines, and mixing them up is not a subtle error — they differ by
+          two orders of magnitude. Total revenue is the market's whole book; new-cohort
+          revenue is month one from the customers acquired that month.</p>
+          <div class="formula">Total revenue  = whole book
+New-cohort rev = month 1, new customers
+Rev per NFC    = New-cohort rev / NFC</div>
         </div>
 
         <div class="method">
-          <h3>CAC payback</h3>
-          <p>Months of gross profit from one customer needed to repay their acquisition cost. Target is 12 months or better.</p>
-          <div class="formula">Payback (months)
-  = CPA / (Revenue per NFC × Gross margin %)</div>
+          <h3>NFC</h3>
+          <p>New first-trade customers — the customers who completed their first transaction
+          in the month. It is the acquisition denominator for CPA and revenue per customer,
+          and the volume line the funnel is trying to move.</p>
+          <div class="formula">NFC growth
+  = NFC this month / NFC last month − 1</div>
         </div>
 
         <div class="method">
-          <h3>Net LTV</h3>
-          <p>Value of one customer over 18 months, after the cost of acquiring them. Only as good as the revenue-per-customer input: where that is month-one new-cohort revenue, a customer who grows into real volume is badly understated. Set <code>active_customers</code> per market to switch it onto whole-book revenue.</p>
-          <div class="formula">Net LTV = (N × avg monthly revenue per customer) − CPA
-N       = 18 months
+          <h3>What is benchmarked against what</h3>
+          <p>The UK is the mature-market yardstick and nothing else. Measuring an emerging
+          market against a mature one reports its age, not its health. Growth and emerging
+          markets are scored against the best actual in their own tier.</p>
+          <div class="formula">Mature (SG, ANZ)      → UK
+Growth (MY, VN)       → best in tier
+Emerging (TH, PH, ID,
+  Longtail, JKT)      → best in tier
 
-avg revenue per customer, in order of preference:
-  1. total revenue ÷ measured active customers
-  2. total revenue ÷ estimated active base
-  3. total revenue ÷ total NFC in the period
-  4. month-1 new-cohort revenue</div>
-          <p style="margin-top:8px" id="arpu-basis-note"></p>
+A target_cpa or target_reg_to_nfc_pct
+set in assumptions.csv beats both.</div>
         </div>
 
         <div class="method">
           <h3>Health score</h3>
-          <p>Weighted 0–100 blend. Each component scores 100 when it hits its benchmark; components with no data are dropped and the rest re-weighted, so a market is never penalised for data you have not supplied yet.</p>
+          <p>Weighted 0–100 blend of the four metrics above. Each component scores 100 when it hits its benchmark; components with no data are dropped and the rest re-weighted, so a market is never penalised for data you have not supplied yet. Growth components are skipped for partial periods rather than comparing a part month against a full one.</p>
           <div class="formula" id="health-formula"></div>
+          <p style="margin-top:8px">CAC payback and LTV are deliberately absent: both rest on
+          a gross margin, an active-customer count and a horizon that are not formally agreed,
+          and an unagreed assumption reads as fact once it is on a dashboard.</p>
         </div>
 
       </div>
@@ -196,7 +190,7 @@ avg revenue per customer, in order of preference:
       <button id="dlg-close" type="button">Close</button>
     </div>
     <p>Copy the rows straight out of the working sheet (including the header row) and paste below. Tab-separated or CSV both work. Existing rows for the same month and market are replaced; every other month is left alone.</p>
-    <p>Required columns: <code>month</code>, <code>market</code>. Optional: <code>reg</code>, <code>submit</code>, <code>l3</code>, <code>nfc</code>, <code>new_total_revenue</code>, <code>new_transaction_revenue</code>, <code>marketing_spend</code>.</p>
+    <p>Required columns: <code>month</code>, <code>market</code>. Optional: <code>reg</code>, <code>submit</code>, <code>l3</code>, <code>nfc</code>, <code>new_total_revenue</code>, <code>new_transaction_revenue</code>, <code>total_gross_revenue</code>, <code>marketing_spend</code>.</p>
     <textarea id="paste-area" spellcheck="false" placeholder="month&#9;market&#9;reg&#9;submit&#9;l3&#9;nfc&#9;new_total_revenue&#9;new_transaction_revenue&#9;marketing_spend&#10;2026-08&#9;SG&#9;…"></textarea>
     <div class="dlg-foot">
       <button class="primary" id="dlg-apply" type="button">Preview &amp; apply</button>

@@ -19,7 +19,6 @@
     "new_transaction_revenue",
     "total_gross_revenue",
     "marketing_spend",
-    "active_customers",
   ]);
 
   /* ---------------------------------------------------------------- utils */
@@ -53,18 +52,12 @@
   /**
    * Derive every per-market, per-month metric.
    *
-   * LTV uses a finite-horizon net-revenue-retention model:
-   *
-   *   GP1  = (new_total_revenue / nfc) * gross_margin        month-1 gross profit per new customer
-   *   r    = nrr / (1 + monthly_discount_rate)
-   *   LTV  = GP1 * (1 - r^T) / (1 - r)                       T = ltv_horizon_months
-   *
-   * NRR (not logo churn) is the decay term because a surviving cross-border
-   * customer's revenue moves with their trade volume - it expands as well as
-   * contracts, and logo churn alone systematically understates the value of a
-   * growth market. The horizon T is what keeps the sum finite when NRR >= 1,
-   * which is common in the first year of a young market; the classic 1/churn
-   * form diverges there and prints a meaningless LTV.
+   * Everything here is a division of two reported numbers - no horizon, no
+   * margin, no retention curve. That is deliberate: CAC payback and LTV were
+   * removed because they rest on inputs (gross margin, an active-customer
+   * count, an 18-month horizon) that are not formally agreed, and a number
+   * built on an unagreed assumption reads as fact once it is on a dashboard.
+   * Reinstate them here when Finance has signed those inputs off.
    */
   function deriveRow(row, market) {
     var m = { month: row.month, market: row.market };
@@ -76,8 +69,8 @@
     m.is_partial = !!row.is_partial;
     m.period_label = row.period_label || null;
     m.spend_basis = row.spend_basis || null;
-    // Whole-book revenue for the market, as opposed to the new-cohort revenue
-    // that drives revenue-per-customer, payback and LTV.
+    // Whole-book revenue for the market - every customer, not just this
+    // month's cohort. This is the market's headline revenue line.
     m.rev_book = row.total_gross_revenue === undefined ? null : row.total_gross_revenue;
     m.rev_total = row.new_total_revenue;
     m.rev_txn = row.new_transaction_revenue;
@@ -97,84 +90,11 @@
     m.arpa = ratio(m.rev_total, m.nfc); // revenue per new customer, month 1
     m.arpa_txn = ratio(m.rev_txn, m.nfc);
 
-    var gm = market && market.gross_margin_pct !== null ? market.gross_margin_pct / 100 : null;
-    m.gross_margin = gm;
-
-    // Average monthly revenue per customer. Preferred source is whole-book
-    // revenue over the active base; falls back to a per-market assumption, and
-    // last of all to month-1 new-cohort revenue (which understates a customer
-    // who ramps - see METHODOLOGY.md).
-    m.active_customers = row.active_customers === undefined ? null : row.active_customers;
-    m.arpu = ratio(m.rev_book, m.active_customers);
-    m.arpu_basis = {
-      estimate: "book revenue \u00f7 estimated active base",
-      total_nfc: "book revenue \u00f7 total NFC",
-    }[row.active_customers_basis] || "book revenue \u00f7 active customers";
-    if (m.arpu === null && market && market.avg_monthly_revenue_per_customer) {
-      m.arpu = market.avg_monthly_revenue_per_customer;
-      m.arpu_basis = "per-market assumption";
-    }
-    if (m.arpu === null) {
-      m.arpu = m.arpa;
-      m.arpu_basis = "month-1 new cohort (a floor)";
-    }
-
-    // Monthly gross profit from one customer, on the same revenue basis as LTV.
-    m.gp_per_customer = m.arpu !== null && gm !== null ? m.arpu * gm : null;
-
-    // CAC payback, in months of that gross profit.
-    m.payback_months =
-      m.cpa !== null && m.gp_per_customer ? m.cpa / m.gp_per_customer : null;
-
-
-    // LTV. See METHODOLOGY.md - the ramp term is what makes this usable for a
-    // payments book, where a new merchant's month-1 revenue is a small
-    // fraction of what the same merchant produces once established.
-    m.ltv = null;
-    m.ltv_method = (market && market.ltv_method) || "simple_net";
-    if (m.ltv_method === "simple_net") {
-      /* The agreed working formula:
-       *   LTV = (N months x average monthly revenue per customer) - CPA
-       * A net figure: what one customer is worth over N months after paying
-       * to acquire them. Deliberately simple, and only as good as the ARPU
-       * basis above - if that is month-1 revenue for a customer who ramps,
-       * this reads far too low. */
-      var horizonSimple = (market && market.ltv_months) || 18;
-      if (m.arpu !== null && m.cpa !== null) {
-        m.ltv = horizonSimple * m.arpu - m.cpa;
-        m.ltv_horizon = horizonSimple;
-      }
-    } else if (m.gp_per_customer !== null && market) {
-      var nrr = market.monthly_nrr_pct !== null ? market.monthly_nrr_pct / 100 : null;
-      var horizon = market.ltv_horizon_months || 36;
-      var annual = market.discount_rate_annual_pct || 0;
-      var monthlyDiscount = annual ? Math.pow(1 + annual / 100, 1 / 12) - 1 : 0;
-      var rampTo = market.revenue_ramp_multiple;
-      rampTo = rampTo === null || rampTo === undefined ? 1 : rampTo;
-      var rampMonths = market.ramp_months || 12;
-      if (nrr !== null && nrr >= 0) {
-        var r = nrr / (1 + monthlyDiscount);
-        var sum = 0;
-        for (var t = 0; t < horizon; t++) {
-          // linear ramp from 1x month-1 revenue to rampTo over rampMonths,
-          // flat thereafter; then the usual NRR decay on top
-          var ramp = rampTo === 1
-            ? 1
-            : 1 + (rampTo - 1) * Math.min(t, rampMonths) / rampMonths;
-          sum += ramp * Math.pow(r, t);
-        }
-        m.ltv = m.gp_per_customer * sum;
-        m.ltv_horizon = horizon;
-        m.ltv_ramp = rampTo;
-      }
-    }
-    m.ltv_cac = ratio(m.ltv, m.cpa);
-
     return m;
   }
 
   /** Sum the raw columns across rows, then derive once from the totals. */
-  function aggregate(rows, month, label, marketsById) {
+  function aggregate(rows, month, label) {
     var totals = { month: month, market: label };
     NUMERIC_COLS.forEach(function (c) {
       var vals = rows.map(function (r) { return r[c]; }).filter(function (v) {
@@ -182,48 +102,14 @@
       });
       totals[c] = vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) : null;
     });
-    // Rate-style inputs cannot be summed - blend them by NFC weight so the
-    // aggregate LTV/payback reflect where customers were actually acquired.
-    var blended = weightedBy(rows, marketsById);
-    var agg = deriveRow(totals, {
-      gross_margin_pct: blended.gross_margin_pct,
-      monthly_nrr_pct: blended.monthly_nrr_pct,
-      ltv_horizon_months: blended.ltv_horizon_months || 36,
-      discount_rate_annual_pct: blended.discount_rate_annual_pct || 0,
-    });
+    // Every remaining metric is a ratio of two summed columns, so deriving
+    // once from the totals gives the correctly NFC-weighted answer for free -
+    // no per-market rate inputs left to blend.
+    var agg = deriveRow(totals, null);
     agg.is_aggregate = true;
     agg.member_count = rows.length;
     agg.is_partial = rows.some(function (r) { return r.is_partial; });
-    // Keep the "estimated" qualifier through a roll-up rather than losing it.
-    var basis = (rows[0] || {}).active_customers_basis;
-    if (basis) {
-      agg.arpu_basis = deriveRow({ active_customers_basis: basis }, null).arpu_basis;
-    }
     return agg;
-  }
-
-  function weightedBy(rows, marketsById) {
-    var keys = [
-      "gross_margin_pct",
-      "monthly_nrr_pct",
-      "ltv_horizon_months",
-      "discount_rate_annual_pct",
-    ];
-    var out = {};
-    keys.forEach(function (k) {
-      var num = 0;
-      var den = 0;
-      rows.forEach(function (r) {
-        var mk = marketsById && marketsById[r.market];
-        var w = r.nfc || 0;
-        if (mk && mk[k] !== null && mk[k] !== undefined && w > 0) {
-          num += mk[k] * w;
-          den += w;
-        }
-      });
-      out[k] = den ? num / den : null;
-    });
-    return out;
   }
 
   /* ---------------------------------------------------------------- health */
@@ -232,11 +118,10 @@
    * the component is dropped and the rest are renormalised, so a market is
    * never penalised for data you have not supplied yet. */
   var HEALTH_COMPONENTS = [
-    { key: "funnel", label: "REG→NFC conversion", weight: 0.25, higherIsBetter: true },
-    { key: "cpa", label: "CPA vs target", weight: 0.2, higherIsBetter: false },
-    { key: "ltv_cac", label: "LTV : CAC", weight: 0.25, higherIsBetter: true },
-    { key: "payback", label: "CAC payback", weight: 0.2, higherIsBetter: false },
-    { key: "momentum", label: "Revenue momentum", weight: 0.1, higherIsBetter: true },
+    { key: "funnel", label: "REG→NFC conversion", weight: 0.35, higherIsBetter: true },
+    { key: "cpa", label: "CPA vs benchmark", weight: 0.30, higherIsBetter: false },
+    { key: "nfc", label: "NFC growth", weight: 0.20, higherIsBetter: true },
+    { key: "revenue", label: "Revenue growth", weight: 0.15, higherIsBetter: true },
   ];
 
   var BANDS = [
@@ -271,8 +156,12 @@
 
   /**
    * Score a market for one month.
-   * `benchmarks` supplies the yardstick per component: an explicit target from
-   * assumptions.csv where one is set, otherwise the reference market (UK).
+   *
+   * `benchmarks` supplies the yardstick per component, resolved by the caller:
+   * an explicit target from assumptions.csv where one is set, otherwise the
+   * market's own tier reference. UK is the yardstick for mature markets only -
+   * measuring an emerging market against a mature one reports its age, not its
+   * health.
    */
   function scoreHealth(current, previous, market, benchmarks) {
     var parts = {};
@@ -287,33 +176,40 @@
       benchmark: benchmarks.cpa,
       score: scoreAgainst(current.cpa, benchmarks.cpa, false),
     };
-    parts.ltv_cac = {
-      actual: current.ltv_cac,
-      benchmark: market.target_ltv_cac || 3,
-      score: scoreAgainst(current.ltv_cac, market.target_ltv_cac || 3, true),
-    };
-    parts.payback = {
-      actual: current.payback_months,
-      benchmark: market.target_payback_months || 12,
-      score: scoreAgainst(current.payback_months, market.target_payback_months || 12, false),
+    // Growth on a common curve: flat reads 80, +12.5% or better reads 100,
+    // -50% reads 0. Comparing a part month against a full one would show a
+    // collapse that never happened, so partial periods score null and the
+    // component drops out rather than dragging the market down.
+    function growth(key) {
+      if (!previous || current.is_partial || previous.is_partial) return null;
+      var a = current[key];
+      var b = previous[key];
+      if (a === null || a === undefined || !b || !isFinite(a) || !isFinite(b)) return null;
+      return a / b - 1;
+    }
+
+    var nfcGrowth = growth("nfc");
+    parts.nfc = {
+      actual: nfcGrowth,
+      benchmark: 0,
+      score: nfcGrowth === null ? null : clamp(80 + nfcGrowth * 160, 0, 100),
     };
 
-    // Momentum: MoM revenue growth, scored so flat = 80 and +12.5% or better = 100.
-    var growth = null;
-    // Comparing a part-month against a full month would read as a collapse in
-    // revenue that never happened, so momentum is skipped for partial periods.
-    if (previous && previous.rev_total && current.rev_total !== null &&
-        !current.is_partial && !previous.is_partial) {
-      growth = current.rev_total / previous.rev_total - 1;
-    }
-    parts.momentum = {
-      actual: growth,
+    // Prefer whole-book revenue - it is the market's headline line - and fall
+    // back to the new cohort where the book figure is not reported.
+    var revKey = current.rev_book !== null && previous && previous.rev_book
+      ? "rev_book" : "rev_total";
+    var revGrowth = growth(revKey);
+    parts.revenue = {
+      actual: revGrowth,
       benchmark: 0,
-      score: growth === null ? null : clamp(80 + growth * 160, 0, 100),
+      basis: revKey === "rev_book" ? "whole book" : "new cohort",
+      score: revGrowth === null ? null : clamp(80 + revGrowth * 160, 0, 100),
     };
 
     var total = 0;
     var weight = 0;
+    var scored = 0;
     HEALTH_COMPONENTS.forEach(function (c) {
       var p = parts[c.key];
       p.label = c.label;
@@ -321,6 +217,7 @@
       if (p.score !== null) {
         total += p.score * c.weight;
         weight += c.weight;
+        scored++;
       }
     });
 
@@ -328,7 +225,9 @@
     return {
       score: score,
       band: bandFor(score),
-      coverage: weight, // 1.0 = every component had data
+      coverage: weight,          // 1.0 = every component had data
+      scored: scored,            // how many of the four actually contributed
+      total_components: HEALTH_COMPONENTS.length,
       parts: parts,
     };
   }
@@ -444,7 +343,6 @@
     BANDS: BANDS,
     deriveRow: deriveRow,
     aggregate: aggregate,
-    weightedBy: weightedBy,
     scoreHealth: scoreHealth,
     bandFor: bandFor,
     parsePaste: parsePaste,

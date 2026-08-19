@@ -33,24 +33,25 @@ Pasted data stays in your browser. Nothing is uploaded anywhere.
 REG→Submit  = Submit / REG              Submit→L3 = L3 / Submit
 L3→NFC      = NFC / L3                  REG→NFC   = NFC / REG
 
-CPA              = Marketing spend / NFC
-Revenue per NFC  = New-cohort revenue / NFC
-Payback (months) = CPA / (Avg revenue per customer × Gross margin %)
-Net LTV          = (18 × Avg revenue per customer) − CPA
+CPA             = Marketing spend / NFC
+Revenue per NFC = New-cohort revenue / NFC
+NFC growth      = NFC this month / NFC last month − 1
 ```
 
-**Net LTV subtracts CPA**, so the sensible target is 2.0× — the same bar as a
-conventional 3.0× gross LTV:CAC.
+Every figure is one division of two reported numbers. There is no margin, retention
+rate, customer-base estimate or horizon behind any of them.
 
-**Average revenue per customer** resolves in order: a measured active-customer count,
-then a per-market estimate, then total NFC for the period, then month-one new-cohort
-revenue. Which one is in play moves payback and LTV substantially, so the page names the
-basis it used in its banner and on its methodology card. Read that before quoting a
-number.
+**Benchmarking is tier-local.** The reference market is the yardstick for *mature*
+markets only — measuring a young market against a mature one reports its age, not its
+health. Growth and emerging markets are scored against the best actual in their own tier.
+An explicit per-market target overrides both.
 
-**Health score** is a weighted 0–100 blend of funnel conversion, CPA, LTV:CAC, payback
-and revenue momentum. Components with no data are dropped and the remaining weights
-renormalised, so a market is never marked down for a gap in reporting.
+**Health score** is a weighted 0–100 blend: REG→NFC conversion 35%, CPA 30%, NFC growth
+20%, revenue growth 15%. Components with no data are dropped and the remaining weights
+renormalised, so a market is never marked down for a gap in reporting — and both the rank
+list and the tooltip say how many of the four inputs a score actually rests on. Growth
+components are skipped for partial periods rather than comparing a part month to a full
+one.
 
 ## Running it
 

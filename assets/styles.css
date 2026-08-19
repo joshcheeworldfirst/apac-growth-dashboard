@@ -298,8 +298,16 @@ section { margin-top: 20px; }
 
 .funnel-card .fh { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
 .funnel-card .fh .mk { font-weight: 600; }
-.funnel-card .fh .tier { font-size: 11px; color: var(--text-muted); }
-.funnel-card .fh .e2e { margin-left: auto; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+/* The market name yields first: the end-to-end rate and its benchmark are the
+   point of the header, so they keep one line and the name truncates instead. */
+.funnel-card .fh .tier {
+  font-size: 11px; color: var(--text-muted);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.funnel-card .fh .e2e {
+  margin-left: auto; font-size: 12px; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums; white-space: nowrap; flex: none;
+}
 
 .stage-row, .step-cvr {
   display: grid;
@@ -474,4 +482,19 @@ footer.foot { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--b
 @media print {
   .controls, header.top { position: static; }
   .card { break-inside: avoid; }
+}
+
+/* Rank rows carry an input count when a score rests on partial data, so a
+   two-input score is never read as equivalent to a four-input one. */
+.rank-row .cov {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+/* The market that sets its tier's benchmark, rather than one measured against it. */
+.vs.best {
+  color: var(--text-muted);
+  font-style: italic;
 }
