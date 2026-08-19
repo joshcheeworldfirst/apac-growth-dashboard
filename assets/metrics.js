@@ -86,8 +86,13 @@
     m.cvr_l3_nfc = ratio(m.nfc, m.l3);
     m.cvr_reg_nfc = ratio(m.nfc, m.reg);
 
-    // Unit economics.
-    m.cpa = ratio(m.spend, m.nfc);
+    /* CPA divides spend by the NFC of the months that HAVE spend, not by every
+     * month's NFC - see sumRows(). On a single raw row the two are the same,
+     * and a row with no spend yields no CPA either way. */
+    m.nfc_for_cpa = row.nfc_for_cpa === undefined || row.nfc_for_cpa === null
+      ? m.nfc : row.nfc_for_cpa;
+    m.cpa_excluded_months = row.cpa_excluded_months || null;
+    m.cpa = ratio(m.spend, m.nfc_for_cpa);
     // Revenue to date per client acquired. Both sides cover the clients
     // acquired in the period, so over a year-to-date window this is what one
     // 2026 client has actually been worth so far - no assumptions in it.
@@ -96,8 +101,21 @@
     return m;
   }
 
-  /** Sum the raw columns across rows, then derive once from the totals. */
-  function aggregate(rows, month, label) {
+  /**
+   * Sum the raw columns across rows into one pseudo-row.
+   *
+   * Every rolled-up figure on the page goes through here - the APAC totals, a
+   * market's year to date, and the tier benchmarks - so the CPA rule below
+   * cannot apply in one place and not another.
+   *
+   * CPA gets its own denominator. Summing spend and NFC independently would
+   * divide the months that HAVE spend by the NFC of ALL months: August has no
+   * spend booked anywhere but did acquire clients, so its clients would arrive
+   * in the denominator with no cost attached and drag CPA down - roughly 10%
+   * across APAC. `nfc_for_cpa` counts only the months that carry spend, and
+   * `cpa_excluded_months` records what was left out so the page can say so.
+   */
+  function sumRows(rows, month, label) {
     var totals = { month: month, market: label };
     NUMERIC_COLS.forEach(function (c) {
       var vals = rows.map(function (r) { return r[c]; }).filter(function (v) {
@@ -105,6 +123,25 @@
       });
       totals[c] = vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) : null;
     });
+
+    var nfcForCpa = null;
+    var excluded = [];
+    rows.forEach(function (r) {
+      var spend = r.marketing_spend;
+      if (spend !== null && spend !== undefined) {
+        if (r.nfc !== null && r.nfc !== undefined) nfcForCpa = (nfcForCpa || 0) + r.nfc;
+      } else if (r.nfc) {
+        if (r.month && excluded.indexOf(r.month) < 0) excluded.push(r.month);
+      }
+    });
+    totals.nfc_for_cpa = nfcForCpa;
+    totals.cpa_excluded_months = excluded.sort();
+    return totals;
+  }
+
+  /** Sum the raw columns across rows, then derive once from the totals. */
+  function aggregate(rows, month, label) {
+    var totals = sumRows(rows, month, label);
     // Every remaining metric is a ratio of two summed columns, so deriving
     // once from the totals gives the correctly NFC-weighted answer for free -
     // no per-market rate inputs left to blend.
@@ -341,6 +378,7 @@
     HEALTH_COMPONENTS: HEALTH_COMPONENTS,
     BANDS: BANDS,
     deriveRow: deriveRow,
+    sumRows: sumRows,
     aggregate: aggregate,
     scoreHealth: scoreHealth,
     bandFor: bandFor,

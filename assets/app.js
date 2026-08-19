@@ -132,13 +132,7 @@
         return r.month.slice(0, 4) === year && hasData(r);
       });
       if (!rows.length) return null;
-      var totals = { month: state.month, market: market };
-      M.NUMERIC_COLS.forEach(function (c) {
-        var vals = rows.map(function (r) { return r[c]; })
-          .filter(function (v) { return v !== null && v !== undefined; });
-        totals[c] = vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) : null;
-      });
-      return M.deriveRow(totals, mk);
+      return M.deriveRow(M.sumRows(rows, state.month, market), mk);
     }
     var raw = rawAt(market, state.month);
     if (!hasData(raw)) return null;
@@ -154,13 +148,7 @@
       return r.month.slice(0, 4) === year && hasData(r);
     });
     if (!rows.length) return null;
-    var totals = { month: state.month, market: market };
-    M.NUMERIC_COLS.forEach(function (c) {
-      var vals = rows.map(function (r) { return r[c]; })
-        .filter(function (v) { return v !== null && v !== undefined; });
-      totals[c] = vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) : null;
-    });
-    return M.deriveRow(totals, marketsById[market]);
+    return M.deriveRow(M.sumRows(rows, state.month, market), marketsById[market]);
   }
 
   /** Previous *month* metrics - momentum is always month-on-month, even in YTD view. */
@@ -354,6 +342,23 @@
       Object.keys(byBasis).forEach(function (b) {
         bits.push(SPEND_NOTE[b].replace("{}", byBasis[b].join(", ")));
       });
+
+      // CPA covers only the months that have spend booked. Name the ones left
+      // out: silently shrinking a denominator is how a metric drifts.
+      var excluded = [];
+      withData.forEach(function (s) {
+        (s.metrics.cpa_excluded_months || []).forEach(function (mo) {
+          if (excluded.indexOf(mo) < 0) excluded.push(mo);
+        });
+      });
+      if (excluded.length) {
+        bits.push("<strong>CPA excludes " +
+          excluded.sort().map(monthLabel).join(", ") +
+          "</strong> — no marketing spend booked for " +
+          (excluded.length === 1 ? "that month" : "those months") +
+          ", so counting its clients would divide real spend by clients that " +
+          "cost nothing on paper and read CPA low.");
+      }
 
       var noRev = withData.filter(function (s) { return s.metrics.rev_total === null; });
       if (noRev.length) {
@@ -779,7 +784,7 @@
         fmtMoney(m.cpa, { exact: true }) + "</b>" +
         '<span class="ffoot-sub">' +
         (m.cpa === null ? "needs marketing_spend"
-          : "spend \u00f7 " + fmtInt(m.nfc) + " NFC") +
+          : "spend \u00f7 " + fmtInt(m.nfc_for_cpa) + " NFC") +
         "</span></div>");
       html.push("</div>");
       return html.join("");
