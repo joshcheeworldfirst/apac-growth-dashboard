@@ -1,4 +1,4 @@
-# APAC Growth Dashboard — demo
+# APAC MKT Growth Dashboard — demo
 
 A single-page dashboard for tracking market health across an acquisition funnel:
 registration → submit → L3 → first trade, alongside CPA, revenue, CAC payback and LTV.

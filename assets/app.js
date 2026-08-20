@@ -1,4 +1,4 @@
-/* APAC Growth Dashboard - view layer.
+/* APAC MKT Growth Dashboard - view layer.
  * Reads window.APAC_DATA (built from data/*.csv) and window.MAP_PATHS,
  * derives every metric through window.Metrics, and renders the page.
  */
