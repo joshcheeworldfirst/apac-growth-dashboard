@@ -237,11 +237,17 @@
     var isRef = tb.self === market;
     var b = { label: isRef ? null : tb.label, tier: mk.tier };
     BENCH_KEYS.forEach(function (k) { b[k] = isRef ? null : (tb[k] === undefined ? null : tb[k]); });
+    // Where CPA's benchmark came from. With targets on some tiers and peer
+    // actuals on others, a reader cannot infer it from the number alone.
+    b.cpa_label = isRef ? null : (mk.tier === "mature" ? REFERENCE_MARKET : tb.label);
     if (mk.target_reg_to_nfc_pct !== null && mk.target_reg_to_nfc_pct !== undefined) {
       b.cvr_reg_nfc = mk.target_reg_to_nfc_pct / 100;
       b.label = "target";
     }
-    if (mk.target_cpa !== null && mk.target_cpa !== undefined) b.cpa = mk.target_cpa;
+    if (mk.target_cpa !== null && mk.target_cpa !== undefined) {
+      b.cpa = mk.target_cpa;
+      b.cpa_label = "target";
+    }
     return b;
   }
 
@@ -601,6 +607,11 @@
       rows.push(tipRow("Total new revenue", fmtMoney(m.rev_total)));
       rows.push(tipRow("Revenue per client", fmtMoney(m.arpa, { exact: true })));
       rows.push(tipRow("CPA", fmtMoney(m.cpa, { exact: true })));
+      if (s.benchmarks && s.benchmarks.cpa) {
+        rows.push(tipRow("CPA benchmark",
+          fmtMoney(s.benchmarks.cpa, { exact: true }) +
+          '<span class="tt-base"> ' + esc(s.benchmarks.cpa_label || "") + "</span>"));
+      }
 
     } else {
       rows.push('<div class="tt-note">No data for this period.</div>');

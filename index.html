@@ -159,25 +159,30 @@ Revenue per client
 
         <div class="method">
           <h3>What is benchmarked against what</h3>
-          <p>The UK is the mature-market yardstick and nothing else — measuring an
-          emerging market against a mature one reports its age, not its health. Growth and
-          emerging markets are scored against the best achievement so far this year within
+          <p>The UK is the mature-market yardstick and nothing else — measuring a younger
+          market against a mature one reports its age, not its health. Growth markets are
+          held to an agreed <strong>$450 CPA target</strong>; emerging markets, and every
+          tier's funnel, are scored against the best achievement so far this year within
           their own tier. That bar is cumulative on purpose — year-to-date through the
           month on screen, not that month alone, so it does not swing on one month's
           noise.</p>
           <p>Gaps are shown in <strong>percentage points</strong>: both sides are already
           percentages, so 44.9% against a 67.1% benchmark is 22.2pp behind — not "−33%",
           which is true of the ratio but reads as a third of registrations lost.</p>
-          <div class="formula">Mature (SG, ANZ)
-  → the UK, same period
-Growth (MY, VN)
-  → best achievement YTD in tier
-Emerging (TH, PH, ID, Longtail,
-  JP, KR, TW)
-  → best achievement YTD in tier
+          <div class="formula">Mature   SG, ANZ, KR
+  funnel → the UK, same period
+  CPA    → the UK, same period
 
-A target_cpa or target_reg_to_nfc_pct
-set in assumptions.csv beats both.</div>
+Growth   MY, VN, TH, ID, JP, TW
+  funnel → best achievement YTD in tier
+  CPA    → $450 target
+
+Emerging Longtail, PH
+  funnel → best achievement YTD in tier
+  CPA    → best in tier (Longtail)</div>
+          <p style="margin-top:8px">A <code>target_cpa</code> or
+          <code>target_reg_to_nfc_pct</code> in <code>assumptions.csv</code> beats the tier
+          benchmark. The map tooltip names which one a market's CPA was measured against.</p>
         </div>
 
         <div class="method">
